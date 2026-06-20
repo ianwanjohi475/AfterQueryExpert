@@ -8,7 +8,9 @@ import pytest
 
 REPORT_PATH = Path("/app/report.json")
 
-# Expected values are fixed by the shipped access log (data/access.log).
+# Expected values are fixed by the shipped access log (data/access.log), which
+# contains 730 valid combined-format lines plus 5 blank/malformed lines that a
+# correct solution must ignore.
 EXPECTED_TOTAL = 730
 EXPECTED_UNIQUE_IPS = 15
 EXPECTED_STATUS_COUNTS = {"2xx": 530, "3xx": 20, "4xx": 155, "5xx": 25}
@@ -36,6 +38,10 @@ TOP_LEVEL_KEYS = {
 
 @pytest.fixture(scope="module")
 def report():
+    """Load /app/report.json and confirm it is a valid JSON object.
+
+    Fails if the agent never produced the report or produced invalid JSON.
+    """
     assert REPORT_PATH.exists(), "/app/report.json should exist"
     text = REPORT_PATH.read_text()
     try:
@@ -47,6 +53,7 @@ def report():
 
 
 def test_only_expected_top_level_keys(report):
+    """The report must contain exactly the five documented keys and no extras."""
     assert set(report.keys()) == TOP_LEVEL_KEYS, (
         f"report must contain exactly {sorted(TOP_LEVEL_KEYS)}, "
         f"got {sorted(report.keys())}"
@@ -54,14 +61,19 @@ def test_only_expected_top_level_keys(report):
 
 
 def test_total_requests(report):
+    """total_requests counts only valid lines, proving blank/malformed lines
+    in the log are ignored (730 valid out of 735 total lines)."""
     assert report["total_requests"] == EXPECTED_TOTAL
 
 
 def test_unique_ips(report):
+    """unique_ips is the number of distinct client IP addresses in the log."""
     assert report["unique_ips"] == EXPECTED_UNIQUE_IPS
 
 
 def test_status_counts(report):
+    """status_counts buckets every response into 2xx/3xx/4xx/5xx, with all four
+    keys always present (including 3xx, which is non-zero here)."""
     sc = report["status_counts"]
     assert isinstance(sc, dict), "status_counts must be an object"
     assert set(sc.keys()) == set(EXPECTED_STATUS_COUNTS.keys()), (
@@ -71,21 +83,27 @@ def test_status_counts(report):
 
 
 def test_top_endpoints(report):
+    """top_endpoints lists the 5 most requested paths, ordered by count
+    descending then path ascending (exact order is checked)."""
     top = report["top_endpoints"]
     assert isinstance(top, list), "top_endpoints must be a list"
     assert len(top) == len(EXPECTED_TOP_ENDPOINTS), (
         "top_endpoints must contain exactly 5 entries"
     )
-    # Order matters: count descending, then path ascending.
     assert top == EXPECTED_TOP_ENDPOINTS
 
 
 def test_low_frequency_endpoint_excluded(report):
+    """The 6th-most-common path (/faq) must not appear, confirming the list is
+    truncated to the top 5."""
     paths = {entry["path"] for entry in report["top_endpoints"]}
     assert "/faq" not in paths, "/faq is the 6th endpoint and must not appear"
 
 
 def test_suspicious_ips(report):
+    """suspicious_ips flags IPs with >=50 requests AND error_rate >=0.5, sorted
+    by requests descending then ip ascending, with error_rate rounded to 2dp.
+    Includes the exact boundary case (50 requests, error_rate 0.50)."""
     suspicious = report["suspicious_ips"]
     assert isinstance(suspicious, list), "suspicious_ips must be a list"
     assert len(suspicious) == len(EXPECTED_SUSPICIOUS), (
@@ -101,6 +119,8 @@ def test_suspicious_ips(report):
 
 
 def test_non_suspicious_ips_excluded(report):
+    """IPs failing either half of the rule must not be flagged: a high-volume IP
+    with zero errors, and an all-error IP below the request threshold."""
     flagged = {entry["ip"] for entry in report["suspicious_ips"]}
     # 10.0.0.99 has 70 requests but zero errors (fails the error-rate rule).
     assert "10.0.0.99" not in flagged, (
