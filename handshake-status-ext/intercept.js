@@ -121,13 +121,25 @@
       if (!Array.isArray(item) || item.length < 2) return item;
       const [chunkType, payload] = item;
       if (typeof payload !== 'string') return item;
-      if (!/Form not found|doesn.?t exist or has been removed/i.test(payload)) return item;
+      // Fast-reject: skip chunks that don't even mention the not-found text
+      if (!/Form not found/.test(payload)) return item;
 
-      const m = payload.match(/^([0-9a-f]+):/);
-      if (!m) return item;
-      const chunkId = m[1];
+      const colonIdx = payload.indexOf(':');
+      if (colonIdx <= 0) return item;
+      const chunkId = payload.slice(0, colonIdx);
+      const treeJson = payload.slice(colonIdx + 1);
 
-      // Pull project ID from URL
+      // STRUCTURAL CHECK — only rewrite chunks whose payload is the actual
+      // not-found page element tree: ["$","div",null,{...}] with an h1 whose
+      // children equals "Form not found". This excludes the i18n translations
+      // bundle (tag is "$L2d", not "div") which would otherwise crash React
+      // when replaced.
+      let tree;
+      try { tree = JSON.parse(treeJson); } catch { return item; }
+      if (!Array.isArray(tree) || tree[0] !== '$' || tree[1] !== 'div') return item;
+      const treeStr = JSON.stringify(tree);
+      if (!/"children":\s*"Form not found"/.test(treeStr)) return item;
+
       const idMatch = (location.href || '').match(/\/forms\/([\w-]+)/);
       const projectId = idMatch ? idMatch[1] : '';
 

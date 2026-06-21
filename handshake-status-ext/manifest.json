@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Handshake Status Verifier",
-  "version": "1.14.1",
+  "version": "1.14.2",
   "description": "Patches status to VERIFIED; rewrites Next.js App Router RSC stream at CDP level to replace 'Form not found' with a real form using Handshake's CSS classes.",
   "permissions": [
     "debugger",

@@ -267,9 +267,21 @@ function patchRSCFormNotFound(html, url) {
       if (typeof payload !== 'string') return match;
 
       // Row ID is everything before the first colon (hex digits in App Router)
-      const idPart = payload.match(/^([^:]+):/);
-      if (!idPart) return match;
-      const rowId = idPart[1];
+      const colonIdx = payload.indexOf(':');
+      if (colonIdx <= 0) return match;
+      const rowId = payload.slice(0, colonIdx);
+      const treeJson = payload.slice(colonIdx + 1);
+
+      // STRUCTURAL CHECK — distinguish the actual not-found element tree from
+      // i18n bundles that happen to contain the literal string "Form not found".
+      // The real chunk is ["$","div",null,{className:".*min-h-screen.*",...}]
+      // with an h1 whose children equals "Form not found". The i18n chunk is
+      // ["$","$L2d",null,{messages:{...}}] — tag is a $L<id> reference, not "div".
+      let tree;
+      try { tree = JSON.parse(treeJson); } catch { return match; }
+      if (!Array.isArray(tree) || tree[0] !== '$' || tree[1] !== 'div') return match;
+      const treeStr = JSON.stringify(tree);
+      if (!/"children":\s*"Form not found"/.test(treeStr)) return match;
 
       const formTree = buildRSCFormTree(projectId);
       const newPayload = rowId + ':' + JSON.stringify(formTree);
