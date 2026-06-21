@@ -245,7 +245,8 @@ function patchRSCFormNotFound(html, url) {
   const idMatch = (url || '').match(/\/forms\/([\w-]+)/);
   const projectId = idMatch ? idMatch[1] : '';
 
-  return html.replace(/<script>([\s\S]*?)<\/script>/gi, (match, content) => {
+  let rewriteCount = 0;
+  const out = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (match, attrs, content) => {
     if (!content.includes('__next_f.push')) return match;
     if (!/Form not found|doesn.?t exist or has been removed/i.test(content)) return match;
 
@@ -254,8 +255,8 @@ function patchRSCFormNotFound(html, url) {
       const pushIdx = content.indexOf(prefix);
       if (pushIdx === -1) return match;
       const argStart = pushIdx + prefix.length;
-      // Use lastIndexOf to find closing ')' — safe because each script tag
-      // contains exactly one push call and nothing after it.
+      // Find the matching closing ')' — last ')' in the script body is safe
+      // because the push call is always the last thing in the tag.
       const argEnd = content.lastIndexOf(')');
       if (argEnd <= argStart) return match;
       const argStr = content.slice(argStart, argEnd).trim();
@@ -265,20 +266,28 @@ function patchRSCFormNotFound(html, url) {
       const [chunkType, payload] = arr;
       if (typeof payload !== 'string') return match;
 
-      // Row ID is everything before the first colon
+      // Row ID is everything before the first colon (hex digits in App Router)
       const idPart = payload.match(/^([^:]+):/);
       if (!idPart) return match;
       const rowId = idPart[1];
 
       const formTree = buildRSCFormTree(projectId);
       const newPayload = rowId + ':' + JSON.stringify(formTree);
+      rewriteCount++;
       console.log('[HV v1.14] CDP RSC rewrite: row', rowId, '→ form (project:', projectId || 'unknown', ')');
-      return '<script>self.__next_f.push(' + JSON.stringify([chunkType, newPayload]) + ')</script>';
+      // Preserve the original script tag attributes (including any CSP nonce)
+      return '<script' + attrs + '>self.__next_f.push(' +
+        JSON.stringify([chunkType, newPayload]) + ')</script>';
     } catch (e) {
       console.warn('[HV v1.14] CDP RSC rewrite failed:', e.message);
       return match;
     }
   });
+
+  if (rewriteCount === 0) {
+    console.warn('[HV v1.14] No RSC chunks rewritten despite "Form not found" in HTML — regex may need updating');
+  }
+  return out;
 }
 
 // ── Patch HTML — rewrites RSC chunks + __NEXT_DATA__ before browser parses it ─
