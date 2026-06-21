@@ -142,6 +142,44 @@
     return new Blob([safeText(await b.text())], { type: b.type });
   };
 
+  // ── Diagnostic logger ────────────────────────────────────────
+  // Prints every GraphQL op + response so the failing form request is
+  // visible in the console. Null-data / errors / "not found" → RED.
+  function extractOpName(reqBody) {
+    if (!reqBody) return '(unknown op)';
+    try {
+      const j = JSON.parse(reqBody);
+      if (Array.isArray(j)) return j.map(x => x.operationName).filter(Boolean).join(', ') || '[batch]';
+      return j.operationName || '(no operationName)';
+    } catch { return '(unparsable req)'; }
+  }
+
+  function diagnose(opName, reqBody, respText) {
+    let parsed = null;
+    try { parsed = JSON.parse(respText); } catch {}
+
+    const looksFormy = /form|application|apply|interest|submit|project/i.test(opName);
+    const dataNull   = parsed && parsed.data &&
+      Object.values(parsed.data).some(v => v === null);
+    const hasErrors  = parsed && Array.isArray(parsed.errors) && parsed.errors.length;
+    const notFound   = /not.?found|doesn.?t exist|has been removed/i.test(respText);
+
+    if (looksFormy || dataNull || hasErrors || notFound) {
+      const tag = (dataNull || hasErrors || notFound) ? '🔴' : '🟡';
+      console.groupCollapsed(
+        `%c${tag} [HV FORM DEBUG] ${opName}`,
+        'color:#fb923c;font-weight:bold;font-size:13px'
+      );
+      console.log('%cOperation:', 'font-weight:bold', opName);
+      let vars = null;
+      try { vars = JSON.parse(reqBody).variables; } catch {}
+      console.log('%cVariables:', 'font-weight:bold', vars);
+      console.log('%cResponse:', 'font-weight:bold', parsed || respText);
+      console.log('%c👉 Copy this whole block and send to Claude', 'color:#a78bfa;font-weight:bold');
+      console.groupEnd();
+    }
+  }
+
   // ── 4. fetch ─────────────────────────────────────────────────
   const _fetch = window.fetch;
   window.fetch = async function (input, init) {
@@ -151,7 +189,17 @@
       : (input && input.url) || '';
     const res = await _fetch.call(this, input, init);
     if (!isGQL(url)) return res;
+
+    // Grab request body for op name
+    let reqBody = '';
+    try {
+      if (init && typeof init.body === 'string') reqBody = init.body;
+      else if (input instanceof Request) reqBody = await input.clone().text();
+    } catch {}
+
     const raw = await res.clone().text();
+    try { diagnose(extractOpName(reqBody), reqBody, raw); } catch {}
+
     return new Response(safeText(raw), {
       status: res.status, statusText: res.statusText, headers: res.headers,
     });
@@ -236,6 +284,6 @@
   startDomScrub();
   setInterval(() => scrubText(document.body), 800);
 
-  console.info('%c[HV v1.4] /hai + /hs patched | flags fixed | KYC patched',
+  console.info('%c[HV v1.6] /hai + /hs patched | FORM DEBUG logging ON — click Submit interest now',
     'color:#22c55e;font-weight:bold');
 })();
