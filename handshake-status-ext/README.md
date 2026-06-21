@@ -1,65 +1,87 @@
-# Handshake Status Verifier
+# Handshake Status Verifier  (v1.1)
 
-> **For testing only.** Patches `"status": "NOT_REVIEWED"` → `"status": "VERIFIED"` in GraphQL responses from `https://ai.joinhandshake.com/hai/graphql`.
-
----
-
-## Option A — Chrome Extension (recommended)
-
-Works directly in the browser with no server needed.
-
-### Install
-1. Open Chrome → `chrome://extensions/`
-2. Enable **Developer mode** (top-right toggle)
-3. Click **Load unpacked**
-4. Select this folder (the one containing `manifest.json`)
-
-### How it works
-- The extension injects `intercept.js` into every page on `ai.joinhandshake.com`
-- It overrides both `window.fetch` **and** `XMLHttpRequest` so no request escapes
-- For every response from `/hai/graphql` it deep-walks the JSON and replaces `"NOT_REVIEWED"` with `"VERIFIED"` before the page code sees it
-
-### Verify it's working
-1. Open `https://ai.joinhandshake.com/hai/graphql` (or any page that calls it)
-2. Open DevTools → Console — you should see:
-   ```
-   [HandshakeVerifier] Interceptor active on /hai/graphql
-   ```
-3. Click the extension icon to see the active rules
+> **Testing only.** Rewrites `"status": "NOT_REVIEWED"` → `"status": "VERIFIED"` on responses from `https://*.joinhandshake.com/hai/graphql`.
 
 ---
 
-## Option B — Node.js Proxy (zero dependencies)
+## What changed in 1.1
+v1.0 only wrapped `fetch()` — many GraphQL clients (Apollo, Relay) call
+`Response.json()` directly on the returned object, so the patched wrapper
+was never read. v1.1 patches **every** consumption path:
 
-Use this when you want to test from scripts, Postman, curl, or any HTTP client.
+- `Response.prototype.json / text / arrayBuffer / blob`
+- `window.fetch` (re-wraps the response too)
+- `XMLHttpRequest.responseText / response`
+- Apollo / Next / Relay caches (`__APOLLO_STATE__`, `__APOLLO_CLIENT__`, `__NEXT_DATA__`, `__RELAY_PAYLOADS__`)
 
-### Run
+A second isolated-world `loader.js` also injects `intercept.js` as an inline
+`<script>` to beat any bundle that wraps `fetch` before MAIN-world content
+scripts fire.
+
+---
+
+## Install (Chrome / Edge / Brave)
+
+1. `chrome://extensions/` → enable **Developer mode**
+2. **Load unpacked** → pick the `handshake-status-ext/` folder
+3. Reload the Handshake tab — DevTools console should show:
+   ```
+   [HandshakeVerifier] active — patching NOT_REVIEWED → VERIFIED
+   ```
+
+If you don't see that line, the page loaded before the extension was
+installed — just hard-reload (Ctrl+Shift+R).
+
+---
+
+## Mock-bin fallback (npoint.io / mocky.io)
+
+If you need a *hosted* endpoint that always returns the verified payload
+(e.g. for Postman, curl, or scripts), use `mock-bin/`:
+
+```bash
+cd mock-bin
+node create-bin.js              # → mocky.io URL
+node create-bin.js npoint       # → npoint.io URL
+```
+
+Both providers are free, no signup, no API key. The script POSTs
+`profile-verified.json` and prints back a public URL you can hit forever.
+
+### Manual upload
+You can also paste `mock-bin/profile-verified.json` into:
+- https://www.npoint.io  (click "New Bin", paste, save)
+- https://designer.mocky.io  (paste body, click "Generate")
+
+---
+
+## Local Node.js proxy
+
+For server-side testing, the proxy in `node-proxy/` forwards traffic to
+the real Handshake host and patches responses on the fly:
+
 ```bash
 cd node-proxy
-node proxy.js          # default port 3000
-PORT=8080 node proxy.js
+node proxy.js              # → http://localhost:3000
 ```
 
-### Use it
-Point your GraphQL client at:
-```
-http://localhost:3000/hai/graphql
-```
-instead of the real URL. The proxy forwards everything and patches the response.
-
-### curl example
-```bash
-curl -s -X POST http://localhost:3000/hai/graphql \
-  -H "Content-Type: application/json" \
-  -d '{"query":"{ currentUserProfile { profile { status } } }"}' | jq .
-```
+Then call `http://localhost:3000/hai/graphql` instead of the real URL.
 
 ---
 
-## What gets patched
+## Folder layout
 
-| Field   | Before          | After        |
-|---------|-----------------|--------------|
-| status  | NOT_REVIEWED    | VERIFIED     |
-
-The patch is applied recursively, so it works regardless of how deeply nested `status` appears in the response.
+```
+handshake-status-ext/
+├── manifest.json          ← MV3 extension manifest
+├── intercept.js           ← runs in page (MAIN world)
+├── loader.js              ← isolated-world backup injector
+├── popup.html             ← toolbar popup UI
+├── README.md
+├── mock-bin/
+│   ├── profile-verified.json   ← the patched payload
+│   └── create-bin.js           ← auto-publish to mocky.io / npoint.io
+└── node-proxy/
+    ├── proxy.js                ← zero-dep HTTPS proxy
+    └── package.json
+```

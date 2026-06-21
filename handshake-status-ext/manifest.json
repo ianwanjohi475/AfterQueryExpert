@@ -1,18 +1,32 @@
 {
   "manifest_version": 3,
   "name": "Handshake Status Verifier",
-  "version": "1.0.0",
-  "description": "Intercepts GraphQL responses and sets profile status to VERIFIED — for testing only.",
+  "version": "1.1.0",
+  "description": "Intercepts /hai/graphql responses and rewrites status to VERIFIED — testing only.",
   "permissions": [],
   "host_permissions": [
-    "https://ai.joinhandshake.com/*"
+    "https://ai.joinhandshake.com/*",
+    "https://*.joinhandshake.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["intercept.js"],
+      "matches": ["https://*.joinhandshake.com/*"]
+    }
   ],
   "content_scripts": [
     {
-      "matches": ["https://ai.joinhandshake.com/*"],
+      "matches": ["https://*.joinhandshake.com/*"],
       "js": ["intercept.js"],
       "run_at": "document_start",
-      "world": "MAIN"
+      "world": "MAIN",
+      "all_frames": true
+    },
+    {
+      "matches": ["https://*.joinhandshake.com/*"],
+      "js": ["loader.js"],
+      "run_at": "document_start",
+      "all_frames": true
     }
   ],
   "action": {

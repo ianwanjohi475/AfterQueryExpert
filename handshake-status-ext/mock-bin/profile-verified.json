@@ -1,0 +1,29 @@
+{
+  "data": {
+    "currentUserProfile": {
+      "profile": {
+        "id": "9dc3a611-050c-464f-95da-71aa9c687250",
+        "name": "Nathan",
+        "fullName": "Nathan Fox",
+        "lastName": "Fox",
+        "email": "christianojimik55@gmail.com",
+        "handshakeUserId": 77007690,
+        "handshakeAffiliatedSchoolId": null,
+        "status": "VERIFIED",
+        "currentOnboardingStage": "FULLY_ONBOARDED",
+        "countryCode": "GB",
+        "stateCode": null,
+        "handshakeUserConnectionOptOut": false,
+        "secondaryEmail": null,
+        "profileAttributes": {
+          "lastSessionTrackedAt": "2026-06-21T06:15:20.558Z"
+        },
+        "createdAt": "2026-05-14T14:22:43.271Z",
+        "updatedAt": "2026-05-14T17:15:28.484Z",
+        "deletedAt": null,
+        "__typename": "Profile"
+      },
+      "__typename": "CurrentUserProfilePayload"
+    }
+  }
+}
