@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Handshake Status Verifier",
-  "version": "1.8.0",
-  "description": "Patches status to VERIFIED and injects a working application form when Handshake shows 'Form not found'.",
+  "version": "1.9.0",
+  "description": "Patches status to VERIFIED and mounts a fixed overlay form on /fellow/forms/* so React cannot revert it.",
   "permissions": [
     "debugger",
     "tabs",
