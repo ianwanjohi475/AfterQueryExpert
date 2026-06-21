@@ -1,4 +1,6 @@
 jakacia-williams-06-20-2026.zip
+handshake-status-ext.zip
+handshake-status-ext/node-proxy/submissions.json
 *.pyc
 __pycache__/
 .pytest_cache/
