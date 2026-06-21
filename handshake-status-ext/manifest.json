@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Handshake Status Verifier",
-  "version": "1.9.0",
-  "description": "Patches status to VERIFIED and mounts a fixed overlay form on /fellow/forms/* so React cannot revert it.",
+  "version": "1.10.0",
+  "description": "Patches status to VERIFIED, mounts overlay form, and logs every form-page GraphQL op to console for reverse-engineering.",
   "permissions": [
     "debugger",
     "tabs",

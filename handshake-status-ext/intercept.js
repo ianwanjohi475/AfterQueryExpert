@@ -169,16 +169,48 @@
 
     const raw = await res.clone().text();
 
-    // Diagnostic: print form-related ops to console
+    // ── HEAVY FORM-PAGE LOGGER ───────────────────────────────────────
+    // When user is on /fellow/forms/*, dump EVERY GraphQL op with full
+    // request + response so we can reverse-engineer the real schema.
     try {
-      const op = JSON.parse(reqBody);
-      const name = Array.isArray(op) ? op.map(x=>x.operationName).join(',') : op.operationName;
-      if (name && /form|apply|interest|project|submit|application/i.test(name)) {
+      const onFormPage = /\/fellow\/forms\//.test(location.href);
+      const op = reqBody ? JSON.parse(reqBody) : null;
+      const name = op && (Array.isArray(op)
+        ? op.map(x => x.operationName).join(',')
+        : op.operationName);
+
+      if (onFormPage) {
+        // Log EVERYTHING on form pages, prefixed for easy filtering
+        console.warn(
+          '%c[HV FORM-DEBUG] ' + (name || '(unnamed)'),
+          'background:#7c3aed;color:#fff;padding:2px 6px;border-radius:3px;font-weight:bold'
+        );
+        try {
+          const opObj = Array.isArray(op) ? op[0] : op;
+          console.log('  → query:    ', (opObj && opObj.query ? opObj.query.slice(0, 600) : '(no query)'));
+          console.log('  → variables:', opObj && opObj.variables);
+          console.log('  → response: ', JSON.parse(raw));
+          console.log('  → url:      ', url);
+        } catch (e) {
+          console.log('  → raw response:', raw.slice(0, 2000));
+        }
+        // Also persist last 30 form-page ops on window for easy copy/paste
+        window.__HV_FORM_DEBUG = window.__HV_FORM_DEBUG || [];
+        window.__HV_FORM_DEBUG.unshift({
+          ts: new Date().toISOString(),
+          op: name,
+          url,
+          variables: (op && (Array.isArray(op) ? op[0] : op).variables) || null,
+          query: (op && (Array.isArray(op) ? op[0] : op).query) || null,
+          response: (() => { try { return JSON.parse(raw); } catch { return raw.slice(0, 2000); } })(),
+        });
+        if (window.__HV_FORM_DEBUG.length > 30) window.__HV_FORM_DEBUG.length = 30;
+      } else if (name && /form|apply|interest|project|submit|application/i.test(name)) {
         const parsed = JSON.parse(raw);
         const hasNull = parsed.data && Object.values(parsed.data).some(v => v === null);
         const hasErrors = parsed.errors && parsed.errors.length;
         if (hasNull || hasErrors) {
-          console.warn('[HV FORM OP]', name, JSON.parse(raw));
+          console.warn('[HV FORM OP]', name, parsed);
         }
       }
     } catch {}
@@ -266,6 +298,23 @@
   startDomScrub();
   setInterval(() => scrubText(document.body), 800);
 
-  console.info('%c[HV v1.7] HTML+GraphQL patched | institution injected | __NEXT_DATA__ patched',
+  // Convenience helper — type HV_DUMP() in DevTools console to get a copyable JSON
+  // of every form-page GraphQL op captured so far.
+  try {
+    Object.defineProperty(window, 'HV_DUMP', {
+      configurable: true,
+      get() {
+        const data = window.__HV_FORM_DEBUG || [];
+        const json = JSON.stringify(data, null, 2);
+        console.log('%c[HV] Copy the JSON below and send it back:',
+          'background:#22c55e;color:#000;padding:2px 6px;font-weight:bold');
+        console.log(json);
+        try { navigator.clipboard.writeText(json); console.log('[HV] (copied to clipboard)'); } catch {}
+        return data;
+      },
+    });
+  } catch {}
+
+  console.info('%c[HV v1.10] HTML+GraphQL patched | form-page logger active | type HV_DUMP in console',
     'color:#22c55e;font-weight:bold');
 })();

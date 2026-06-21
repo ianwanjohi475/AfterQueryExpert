@@ -257,7 +257,8 @@
     wireForm(ctx, overlay);
 
     console.info(
-      '%c[HV v1.9] Overlay form mounted on ' + location.pathname,
+      '%c[HV v1.10] Overlay form mounted on ' + location.pathname
+       + ' — type HV_DUMP in console to capture GraphQL for the real form',
       'color:#22c55e;font-weight:bold'
     );
   }
