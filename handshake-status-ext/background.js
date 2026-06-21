@@ -49,6 +49,50 @@ const FAKE_INSTITUTION = {
   __typename: 'Institution',
 };
 
+// ── Synthetic form object — makes Handshake's own React form component render ─
+// Covers every field name variation seen in Handshake's JS bundle so React
+// doesn't reject the object regardless of which alias the query uses.
+function makeSyntheticForm(formId) {
+  const q = (id, pos, prompt, required, type) => ({
+    id,
+    __typename: 'ApplicationFormQuestion',
+    type, kind: type,
+    prompt, label: prompt, text: prompt, title: prompt, name: prompt,
+    required, optional: !required,
+    position: pos, order: pos, index: pos,
+    choices: [], options: [], answers: [],
+    helpText: null, placeholder: null, description: null,
+  });
+  return {
+    id: formId || 'hv-form-1',
+    __typename: 'ProjectApplicationForm',
+    title: 'Project Application', name: 'Project Application',
+    status: 'PUBLISHED', state: 'PUBLISHED',
+    enabled: true, isPublished: true, isActive: true,
+    description: null, instructions: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    questions: [
+      q('hv-q1', 0, 'Why are you interested in this project?',     true,  'LONG_TEXT'),
+      q('hv-q2', 1, 'What relevant skills or experience do you have?', false, 'LONG_TEXT'),
+      q('hv-q3', 2, 'What is your weekly availability?',           false, 'SHORT_TEXT'),
+    ],
+    project: null, submission: null, existingSubmission: null,
+    hasExistingSubmission: false, alreadyApplied: false,
+    requiresResume: false, requiresCoverLetter: false,
+  };
+}
+
+// Keys whose null value means "no form was created for this user" — replace with
+// a synthetic form so Handshake's own form component renders.
+const FORM_NULL_KEYS = new Set([
+  'projectApplicationForm',
+  'applicationForm',
+  'projectInterestForm',
+  'interestForm',
+  'projectForm',
+]);
+
 // ── Patch rules ──────────────────────────────────────────────────────────────
 const KEY_RULES = {
   'status':                                     v => v === 'NOT_REVIEWED' ? 'VERIFIED' : v,
@@ -81,9 +125,23 @@ const KEY_RULES = {
   'experiment-hai-hub-link-in-nav':             v => v === 'excluded' ? 'on' : v,
 };
 
-function deepPatch(o) {
+function deepPatch(o, _formId) {
   if (!o || typeof o !== 'object') return o;
+
+  // Pull form ID from URL context when available
+  const formId = _formId || (() => {
+    try {
+      const m = (typeof location !== 'undefined' ? location.href : '').match(/\/forms\/([\w-]+)/);
+      return m ? m[1] : null;
+    } catch { return null; }
+  })();
+
   for (const k of Object.keys(o)) {
+    // Inject synthetic form when server returns null for a form key
+    if (FORM_NULL_KEYS.has(k) && o[k] === null) {
+      o[k] = makeSyntheticForm(formId);
+    }
+
     if (KEY_RULES[k] !== undefined) {
       o[k] = KEY_RULES[k](o[k], o);
     }
@@ -100,7 +158,7 @@ function deepPatch(o) {
       o.institution = FAKE_INSTITUTION;
     }
     // Recurse
-    if (o[k] && typeof o[k] === 'object') deepPatch(o[k]);
+    if (o[k] && typeof o[k] === 'object') deepPatch(o[k], formId);
   }
   return o;
 }

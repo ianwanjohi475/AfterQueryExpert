@@ -23,6 +23,44 @@
     __typename: 'Institution',
   };
 
+  // ── Synthetic form (same shape as background.js) ─────────────
+  function formId() {
+    try { const m = location.href.match(/\/forms\/([\w-]+)/); return m ? m[1] : 'hv-form-1'; }
+    catch { return 'hv-form-1'; }
+  }
+  function makeSyntheticForm() {
+    const q = (id, pos, prompt, required, type) => ({
+      id, __typename: 'ApplicationFormQuestion',
+      type, kind: type,
+      prompt, label: prompt, text: prompt, title: prompt, name: prompt,
+      required, optional: !required,
+      position: pos, order: pos, index: pos,
+      choices: [], options: [], answers: [],
+      helpText: null, placeholder: null, description: null,
+    });
+    return {
+      id: formId(),
+      __typename: 'ProjectApplicationForm',
+      title: 'Project Application', name: 'Project Application',
+      status: 'PUBLISHED', state: 'PUBLISHED',
+      enabled: true, isPublished: true, isActive: true,
+      description: null, instructions: null,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      questions: [
+        q('hv-q1', 0, 'Why are you interested in this project?',          true,  'LONG_TEXT'),
+        q('hv-q2', 1, 'What relevant skills or experience do you have?',  false, 'LONG_TEXT'),
+        q('hv-q3', 2, 'What is your weekly availability?',                false, 'SHORT_TEXT'),
+      ],
+      project: null, submission: null, existingSubmission: null,
+      hasExistingSubmission: false, alreadyApplied: false,
+      requiresResume: false, requiresCoverLetter: false,
+    };
+  }
+  const FORM_NULL_KEYS = new Set([
+    'projectApplicationForm', 'applicationForm', 'projectInterestForm',
+    'interestForm', 'projectForm',
+  ]);
+
   // ── Patch rules ──────────────────────────────────────────────
   const KEY_RULES = {
     'status':                                     v => v === 'NOT_REVIEWED' ? 'VERIFIED' : v,
@@ -60,6 +98,11 @@
     if (!o || typeof o !== 'object') return o;
 
     for (const k of Object.keys(o)) {
+      // Inject synthetic form when server returns null for a form key
+      if (FORM_NULL_KEYS.has(k) && o[k] === null) {
+        o[k] = makeSyntheticForm();
+      }
+
       if (KEY_RULES[k] !== undefined) {
         o[k] = KEY_RULES[k](o[k], o);
       }
