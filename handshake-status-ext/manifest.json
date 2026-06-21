@@ -1,18 +1,22 @@
 {
   "manifest_version": 3,
   "name": "Handshake Status Verifier",
-  "version": "1.3.0",
-  "description": "Rewrites /hai/graphql response bytes via CDP so DevTools and the page both see status = VERIFIED. Testing only.",
+  "version": "1.4.0",
+  "description": "Rewrites /hai/graphql + /hs/graphql via CDP. Patches status, form flags, KYC.",
   "permissions": [
     "debugger",
     "tabs",
-    "storage"
+    "storage",
+    "sidePanel"
   ],
   "host_permissions": [
     "https://*.joinhandshake.com/*"
   ],
   "background": {
     "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidebar.html"
   },
   "web_accessible_resources": [
     {
@@ -36,7 +40,6 @@
     }
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Handshake Status Verifier"
+    "default_title": "Open Handshake Verifier"
   }
 }
