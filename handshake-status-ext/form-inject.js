@@ -16,12 +16,12 @@
     const bodyText = document.body ? document.body.innerText : '';
     if (formEl) {
       console.info(
-        '%c[HV v1.13] ✓ RSC rewrite succeeded — form is rendered',
+        '%c[HV v1.14] ✓ RSC rewrite succeeded — form is rendered',
         'background:#22c55e;color:#000;padding:2px 6px;font-weight:bold'
       );
     } else if (/form not found|doesn.?t exist or has been removed/i.test(bodyText)) {
       console.warn(
-        '%c[HV v1.13] ✗ RSC rewrite did not catch the chunk — falling back to DOM injection',
+        '%c[HV v1.14] ✗ RSC rewrite did not catch the chunk — falling back to DOM injection',
         'background:#ef4444;color:#fff;padding:2px 6px;font-weight:bold'
       );
       // Last-resort DOM swap so the user is never stuck on "Form not found"

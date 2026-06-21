@@ -1,10 +1,11 @@
 /**
- * HandshakeVerifier v1.13 — page-context interceptor (MAIN world)
+ * HandshakeVerifier v1.14 — page-context interceptor (MAIN world)
  *
- * v1.13: hijack self.__next_f.push to rewrite the streamed RSC chunk that
- * contains "Form not found" → a real form element tree using Handshake's
- * own CSS classes. This makes React render an interactive form on the
- * /fellow/forms/* page, replacing the not-found UI before it ever appears.
+ * v1.14: Belt-and-suspenders RSC patching. The primary fix is now at CDP
+ * level in background.js (patchRSCFormNotFound), which rewrites the raw HTML
+ * bytes before the browser even parses them. This in-page wrapper of
+ * self.__next_f.push serves as a fallback for client-side navigations where
+ * no HTML document is fetched.
  *
  * Plus the prior layers:
  *   - Patches /hai/graphql + /hs/graphql at every JS consumption point
@@ -133,7 +134,7 @@
       const formTree = buildFormTree(projectId);
       const newPayload = chunkId + ':' + JSON.stringify(formTree);
       console.info(
-        '%c[HV v1.13] RSC chunk "' + chunkId + '" rewritten — Form not found → form',
+        '%c[HV v1.14] RSC chunk "' + chunkId + '" rewritten — Form not found → form',
         'background:#22c55e;color:#000;padding:2px 6px;font-weight:bold'
       );
       return [chunkType, newPayload];
@@ -153,7 +154,7 @@
       set(v) { _nf = wrapNextF(v) || v; },
     });
   } catch (e) {
-    console.warn('[HV v1.13] Could not hijack __next_f:', e.message);
+    console.warn('[HV v1.14] Could not hijack __next_f:', e.message);
   }
 
   // ── Form submit handler — wires up the rewritten form after React mounts ─
@@ -607,6 +608,6 @@
     }, 1500);
   }
 
-  console.info('%c[HV v1.12] HTML+GraphQL patched | type HV_DUMP or HV_NEXT in console',
+  console.info('%c[HV v1.14] HTML+GraphQL patched | type HV_DUMP or HV_NEXT in console',
     'color:#22c55e;font-weight:bold');
 })();

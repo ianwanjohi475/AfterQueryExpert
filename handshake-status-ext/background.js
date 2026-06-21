@@ -1,9 +1,10 @@
 /**
- * HandshakeVerifier v1.7
+ * HandshakeVerifier v1.14
  *
  * Three-layer interception:
- * 1. HTML document pages — patches __NEXT_DATA__ in raw HTML BEFORE the
- *    browser parses it, so SSR and client agree → no React #418 hydration error
+ * 1. HTML document pages — patches __NEXT_DATA__ AND Next.js App Router RSC
+ *    stream chunks (self.__next_f.push) in raw HTML BEFORE the browser parses
+ *    them. Replaces "Form not found" RSC element tree with a real form.
  * 2. /hai/graphql + /hs/graphql JSON — deep-patches all gate fields
  * 3. Captures every op for sidebar inspection
  */
@@ -170,9 +171,127 @@ function patchJSON(text) {
   catch { return text.replace(/"NOT_REVIEWED"/g, '"VERIFIED"'); }
 }
 
-// ── Patch HTML — rewrites __NEXT_DATA__ before browser parses it ─────────────
-function patchHTML(html) {
+// ── Build RSC form element tree (for CDP-level HTML patching) ───────────────
+// Uses only native HTML elements + Handshake's existing Tailwind classes so
+// React can render this without any custom component references.
+function buildRSCFormTree(projectId) {
+  const SUBMIT_EP = 'http://localhost:4000/submit';
+  const inp = (name, type, ph, val) => ['$', 'input', name, {
+    name, type: type || 'text',
+    defaultValue: val || '',
+    placeholder: ph || '',
+    required: true,
+    className: 'w-full px-3 py-2 rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary',
+  }];
+  const txt = (name, ph) => ['$', 'textarea', name, {
+    name, placeholder: ph || '', rows: 4, required: false,
+    className: 'w-full px-3 py-2 rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-y',
+  }];
+  const field = (lbl, child) => ['$', 'div', null, {
+    className: 'mb-4',
+    children: [
+      ['$', 'label', null, { className: 'block text-sm font-medium text-foreground mb-1', children: lbl }],
+      child,
+    ],
+  }];
+  return ['$', 'div', null, {
+    className: 'flex min-h-screen items-center justify-center bg-surface p-6',
+    children: [
+      ['$', 'div', null, {
+        className: 'w-full max-w-2xl rounded-xl border border-border bg-card shadow-sm overflow-hidden',
+        'data-hv-form': '1',
+        'data-hv-project-id': projectId || '',
+        children: [
+          ['$', 'div', null, {
+            className: 'px-8 py-6 border-b border-border bg-surface',
+            children: [
+              ['$', 'h1', null, { className: 'text-2xl font-bold text-primary-foreground', children: 'Project Application' }],
+              ['$', 'p', null, { className: 'mt-1 text-sm text-muted-foreground', children: 'Submit your interest for this opportunity' }],
+            ],
+          }],
+          ['$', 'form', null, {
+            id: 'hv-rsc-form',
+            className: 'px-8 py-6',
+            children: [
+              field('First name *', inp('firstName', 'text', '', 'Nathan')),
+              field('Last name *',  inp('lastName',  'text', '', 'Fox')),
+              field('Email *',      inp('email', 'email', '', 'christianojimik55@gmail.com')),
+              field('Why are you interested in this project? *', txt('motivation', 'Tell us what draws you to this opportunity…')),
+              field('Relevant experience', txt('experience', 'Briefly describe your relevant background…')),
+              field('Portfolio / LinkedIn URL', inp('portfolio', 'url', 'https://')),
+              ['$', 'button', null, {
+                type: 'submit',
+                className: 'w-full mt-2 px-4 py-3 rounded-md bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity',
+                children: 'Submit interest',
+              }],
+              ['$', 'p', null, {
+                className: 'mt-3 text-xs text-muted-foreground text-center',
+                children: 'Submits to ' + SUBMIT_EP,
+              }],
+            ],
+          }],
+        ],
+      }],
+    ],
+  }];
+}
+
+// ── Patch RSC __next_f.push chunks containing "Form not found" ───────────────
+// Each Next.js App Router RSC chunk is emitted as a separate <script> tag:
+//   <script>self.__next_f.push([type, "rowId:elementTreeJSON"])</script>
+// We find the one that carries the "Form not found" element tree and replace
+// its payload with our form element tree.
+function patchRSCFormNotFound(html, url) {
+  const idMatch = (url || '').match(/\/forms\/([\w-]+)/);
+  const projectId = idMatch ? idMatch[1] : '';
+
+  return html.replace(/<script>([\s\S]*?)<\/script>/gi, (match, content) => {
+    if (!content.includes('__next_f.push')) return match;
+    if (!/Form not found|doesn.?t exist or has been removed/i.test(content)) return match;
+
+    try {
+      const prefix = 'self.__next_f.push(';
+      const pushIdx = content.indexOf(prefix);
+      if (pushIdx === -1) return match;
+      const argStart = pushIdx + prefix.length;
+      // Use lastIndexOf to find closing ')' — safe because each script tag
+      // contains exactly one push call and nothing after it.
+      const argEnd = content.lastIndexOf(')');
+      if (argEnd <= argStart) return match;
+      const argStr = content.slice(argStart, argEnd).trim();
+
+      const arr = JSON.parse(argStr);
+      if (!Array.isArray(arr) || arr.length < 2) return match;
+      const [chunkType, payload] = arr;
+      if (typeof payload !== 'string') return match;
+
+      // Row ID is everything before the first colon
+      const idPart = payload.match(/^([^:]+):/);
+      if (!idPart) return match;
+      const rowId = idPart[1];
+
+      const formTree = buildRSCFormTree(projectId);
+      const newPayload = rowId + ':' + JSON.stringify(formTree);
+      console.log('[HV v1.14] CDP RSC rewrite: row', rowId, '→ form (project:', projectId || 'unknown', ')');
+      return '<script>self.__next_f.push(' + JSON.stringify([chunkType, newPayload]) + ')</script>';
+    } catch (e) {
+      console.warn('[HV v1.14] CDP RSC rewrite failed:', e.message);
+      return match;
+    }
+  });
+}
+
+// ── Patch HTML — rewrites RSC chunks + __NEXT_DATA__ before browser parses it ─
+function patchHTML(html, url) {
   if (!html || typeof html !== 'string') return html;
+
+  // Patch Next.js App Router RSC stream when this is a form page with "Form not found"
+  if (html.includes('__next_f') &&
+      /Form not found|doesn.?t exist or has been removed/i.test(html)) {
+    html = patchRSCFormNotFound(html, url);
+  }
+
+  // Patch legacy __NEXT_DATA__ (Pages Router / hybrid pages)
   if (!html.includes('__NEXT_DATA__')) return html;
 
   return html.replace(
@@ -268,7 +387,7 @@ chrome.debugger.onEvent.addListener(async (src, method, params) => {
 
     let patched = original;
     if (isHTML) {
-      patched = patchHTML(original);
+      patched = patchHTML(original, request.url);
     } else if (isJSON) {
       patched = patchJSON(original);
     }
