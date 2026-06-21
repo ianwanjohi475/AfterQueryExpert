@@ -17,37 +17,36 @@
   // ── Patch rules by key ──────────────────────────────────────
   // These are applied ANYWHERE in the response tree.
   const KEY_RULES = {
-    // Core status
-    'status': v => v === 'NOT_REVIEWED' ? 'VERIFIED' : v,
-
-    // KYC — education check
-    'hasQualifyingEducation': () => true,
-
-    // Auto-approval for projects
-    'showcase-projects-auto-approval': () => true,
-
-    // THE FORM GATE — "excluded" means no form shown
-    'experiment-m2-project-specific-application': v =>
-      v === 'excluded' ? 'on' : v,
-    'experiment-relevance-ready-form-v2': v =>
-      v === 'excluded' ? 'on' : v,
-
-    // Other HAI flags
-    'experiment-hai-quick-apply-flow':  () => 'on',
-    'experiment-hai-core-intent':       () => 'on',
-    'experiment-hai-unified-promotion': () => 'on',
-    'experiment-hai-hub':               v => v === 'excluded' ? 'on' : v,
-    'experiment-hai-hub-link-in-nav':   v => v === 'excluded' ? 'on' : v,
-    'experiment-hai-campaign-emails':   v => v === 'excluded' ? 'on' : v,
-
-    // Access / onboarding
-    'accessProhibited':              () => false,
-    'requiresPhoneVerification':     () => false,
-    'requiresHaiPhoneVerification':  () => false,
-    'requiresOnboarding':            () => false,
-    'requiresReonboarding':          () => false,
-    'requiresConfirmation':          () => false,
-    'needsVisibilitySettings':       () => false,
+    'status':                                     v => v === 'NOT_REVIEWED' ? 'VERIFIED' : v,
+    'hasQualifyingEducation':                     () => true,
+    'isEligible':                                 () => true,
+    'eligible':                                   () => true,
+    'canUse':                                     () => true,
+    'canApply':                                   () => true,
+    'canSubmit':                                  () => true,
+    'canView':                                    () => true,
+    'formNotFound':                               () => false,
+    'notFound':                                   () => false,
+    'formExists':                                 () => true,
+    'applicationExists':                          () => true,
+    'showcase-projects-auto-approval':            () => true,
+    'experiment-m2-project-specific-application': v => v === 'excluded' ? 'on' : v,
+    'experiment-relevance-ready-form-v2':         v => v === 'excluded' ? 'on' : v,
+    'experiment-hai-quick-apply-flow':            () => 'on',
+    'experiment-hai-core-intent':                 () => 'on',
+    'experiment-hai-unified-promotion':           () => 'on',
+    'experiment-hai-hub':                         v => v === 'excluded' ? 'on' : v,
+    'experiment-hai-hub-link-in-nav':             v => v === 'excluded' ? 'on' : v,
+    'experiment-hai-campaign-emails':             v => v === 'excluded' ? 'on' : v,
+    'accessProhibited':                           () => false,
+    'requiresPhoneVerification':                  () => false,
+    'requiresHaiPhoneVerification':               () => false,
+    'requiresOnboarding':                         () => false,
+    'requiresReonboarding':                       () => false,
+    'requiresConfirmation':                       () => false,
+    'needsVisibilitySettings':                    () => false,
+    'needsToAgreeToTos':                          () => false,
+    'errors':                                     v => Array.isArray(v) ? [] : v,
   };
 
   // ── Deep-patch ──────────────────────────────────────────────

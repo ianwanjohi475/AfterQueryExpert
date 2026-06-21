@@ -5,35 +5,36 @@
   <title>Handshake Verifier</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 13px;
-      background: #0f172a;
-      color: #e2e8f0;
+      font-size: 13px; background: #0f172a; color: #e2e8f0;
       min-height: 100vh;
-      padding: 0 0 16px;
     }
-
     header {
       background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-      padding: 16px;
-      position: sticky;
-      top: 0;
-      z-index: 10;
+      padding: 12px 16px; position: sticky; top: 0; z-index: 10;
     }
-    header h1 { font-size: 14px; font-weight: 700; letter-spacing: .3px; }
-    header p  { font-size: 11px; opacity: .75; margin-top: 3px; }
+    header h1 { font-size: 14px; font-weight: 700; }
+    header p { font-size: 10px; opacity: .8; margin-top: 2px; }
+
+    .tabs { display: flex; background: #1e293b; border-bottom: 1px solid #334155; }
+    .tab {
+      flex: 1; padding: 10px 0; text-align: center;
+      font-size: 11px; font-weight: 600;
+      color: #94a3b8; cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all .15s;
+    }
+    .tab:hover { color: #e2e8f0; }
+    .tab.active { color: #a78bfa; border-bottom-color: #a78bfa; background: #0f172a; }
+
+    .panel { display: none; padding: 10px 12px; }
+    .panel.active { display: block; }
 
     .status-banner {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 12px;
-      background: #052e16;
-      border: 1px solid #166534;
-      border-radius: 8px;
-      padding: 10px 12px;
+      display: flex; align-items: center; gap: 8px;
+      background: #052e16; border: 1px solid #166534;
+      border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;
     }
     .pulse {
       width: 10px; height: 10px; border-radius: 50%;
@@ -42,150 +43,188 @@
       flex-shrink: 0;
     }
     @keyframes pulse {
-      0%,100% { opacity:1; transform:scale(1); }
-      50%      { opacity:.5; transform:scale(.85); }
+      0%,100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .5; transform: scale(.85); }
     }
-    .status-text { font-size: 12px; font-weight: 600; color: #4ade80; }
-    .status-sub  { font-size: 10px; color: #86efac; margin-top: 1px; }
+    .stat-text { font-size: 11px; font-weight: 600; color: #4ade80; }
+    .stat-sub { font-size: 10px; color: #86efac; margin-top: 1px; }
 
-    .section { margin: 10px 12px 0; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+    .stat-box {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 6px; padding: 8px; text-align: center;
+    }
+    .stat-num { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .stat-num.green { color: #4ade80; }
+    .stat-num.purple { color: #a78bfa; }
+    .stat-label { font-size: 9px; color: #64748b; text-transform: uppercase; margin-top: 2px; }
+
     .section-title {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .8px;
-      color: #64748b;
-      margin-bottom: 6px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .8px; color: #64748b; margin: 10px 0 6px;
     }
-
     .card {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      overflow: hidden;
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 8px; overflow: hidden;
     }
     .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 12px;
-      border-bottom: 1px solid #1e2d40;
-    }
-    .row:last-child { border-bottom: none; }
-    .row .k { color: #94a3b8; font-size: 12px; }
-    .row .v { font-weight: 600; font-size: 12px; color: #f1f5f9; font-variant-numeric: tabular-nums; }
-    .v.green  { color: #4ade80; }
-    .v.purple { color: #a78bfa; }
-    .v.orange { color: #fb923c; }
-
-    .pill {
-      display: inline-block;
-      padding: 1px 7px;
-      border-radius: 99px;
-      font-size: 10px;
-      font-weight: 700;
-    }
-    .pill.ok  { background:#052e16; color:#4ade80; }
-    .pill.fix { background:#2d1b00; color:#fb923c; }
-
-    .flags { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
-    .flag-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      padding: 6px 10px;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 7px 12px; border-bottom: 1px solid #1e2d40;
       font-size: 11px;
     }
-    .flag-row .fname { color: #94a3b8; font-size: 10px; max-width: 180px; word-break: break-all; }
+    .row:last-child { border-bottom: none; }
+    .row .k { color: #94a3b8; }
+    .row .v { font-weight: 600; color: #f1f5f9; }
+    .pill { padding: 1px 6px; border-radius: 99px; font-size: 10px; font-weight: 700; }
+    .pill.ok { background: #052e16; color: #4ade80; }
+    .pill.fix { background: #2d1b00; color: #fb923c; }
 
-    #log {
-      margin: 10px 12px 0;
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-family: "SF Mono", "Fira Code", monospace;
-      font-size: 10px;
-      color: #64748b;
-      max-height: 200px;
-      overflow-y: auto;
+    /* Capture entries */
+    .capture {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;
+      cursor: pointer; transition: all .12s;
     }
-    #log .entry { padding: 2px 0; border-bottom: 1px solid #1e293b; }
-    #log .entry:last-child { border-bottom: none; }
-    .ts { color: #334155; margin-right: 6px; }
-    .ok  { color: #4ade80; }
-    .err { color: #f87171; }
+    .capture:hover { border-color: #475569; background: #243042; }
+    .capture.expanded { border-color: #a78bfa; }
+    .capture-head {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 8px;
+    }
+    .op-name {
+      font-size: 11px; font-weight: 700; color: #e2e8f0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      flex: 1; min-width: 0;
+    }
+    .op-meta {
+      font-size: 9px; color: #64748b; display: flex; gap: 6px;
+      flex-shrink: 0;
+    }
+    .badge-changed { background: #052e16; color: #4ade80; padding: 1px 5px; border-radius: 3px; font-weight: 700; }
+    .badge-status { background: #1e293b; color: #94a3b8; padding: 1px 5px; border-radius: 3px; }
+    .op-detail { display: none; margin-top: 8px; }
+    .capture.expanded .op-detail { display: block; }
+    .detail-label {
+      font-size: 9px; font-weight: 700; color: #64748b;
+      text-transform: uppercase; margin: 6px 0 3px;
+    }
+    pre {
+      background: #0f172a; border: 1px solid #1e293b;
+      border-radius: 4px; padding: 6px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 10px; color: #94a3b8;
+      max-height: 200px; overflow: auto;
+      white-space: pre-wrap; word-break: break-all;
+    }
+    pre.patched { border-left: 3px solid #22c55e; }
+    pre.original { border-left: 3px solid #fb923c; }
+
+    .filter-bar {
+      display: flex; gap: 4px; margin-bottom: 8px;
+    }
+    input.search {
+      flex: 1; background: #1e293b; border: 1px solid #334155;
+      color: #e2e8f0; padding: 5px 8px; border-radius: 4px;
+      font-size: 11px; font-family: inherit;
+    }
+    input.search::placeholder { color: #475569; }
+    input.search:focus { outline: none; border-color: #a78bfa; }
+    button.btn {
+      background: #1e293b; border: 1px solid #334155; color: #e2e8f0;
+      padding: 5px 10px; border-radius: 4px;
+      font-size: 10px; font-weight: 600; cursor: pointer;
+      font-family: inherit;
+    }
+    button.btn:hover { background: #334155; }
+    button.btn.danger:hover { background: #7f1d1d; border-color: #991b1b; }
+
+    .empty {
+      text-align: center; padding: 30px 10px;
+      color: #475569; font-size: 11px;
+    }
+    .empty strong { color: #94a3b8; display: block; margin-bottom: 4px; }
 
     footer {
-      margin: 14px 12px 0;
-      font-size: 10px;
-      color: #334155;
-      text-align: center;
+      padding: 8px 12px; font-size: 9px;
+      color: #334155; text-align: center;
     }
   </style>
 </head>
 <body>
   <header>
     <h1>Handshake Status Verifier</h1>
-    <p>v1.4.0 · CDP wire rewriter</p>
+    <p>v1.5.0 · CDP rewriter + traffic capture</p>
   </header>
 
-  <div class="status-banner">
-    <div class="pulse" id="indicator"></div>
-    <div>
-      <div class="status-text" id="statusText">Connecting…</div>
-      <div class="status-sub" id="statusSub">Waiting for Handshake tab</div>
+  <div class="tabs">
+    <div class="tab active" data-tab="overview">Overview</div>
+    <div class="tab" data-tab="traffic">Traffic <span id="trafficBadge" style="color:#4ade80;font-weight:700"></span></div>
+    <div class="tab" data-tab="patches">Patches</div>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div class="panel active" id="panel-overview">
+    <div class="status-banner">
+      <div class="pulse" id="indicator"></div>
+      <div>
+        <div class="stat-text" id="statusText">Connecting…</div>
+        <div class="stat-sub" id="statusSub">Waiting for Handshake tab</div>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-box">
+        <div class="stat-num green" id="patched">0</div>
+        <div class="stat-label">Patched</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" id="seen">0</div>
+        <div class="stat-label">Seen</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num purple" id="tabs">0</div>
+        <div class="stat-label">Tabs</div>
+      </div>
+    </div>
+
+    <div class="section-title">How to diagnose "Form not found"</div>
+    <div class="card" style="padding:10px;font-size:11px;line-height:1.5;color:#94a3b8">
+      1. Click <strong style="color:#a78bfa">Traffic</strong> tab above<br>
+      2. On Handshake: click <strong>Submit interest</strong> on a project<br>
+      3. Come back here — newest request appears at top<br>
+      4. Click it to see the GraphQL operation + response<br>
+      5. Look for fields like <code style="background:#0f172a;padding:1px 4px;border-radius:3px">form: null</code> or
+         <code style="background:#0f172a;padding:1px 4px;border-radius:3px">errors</code>
     </div>
   </div>
 
-  <!-- Live counters -->
-  <div class="section">
-    <div class="section-title">Live stats</div>
+  <!-- TRAFFIC -->
+  <div class="panel" id="panel-traffic">
+    <div class="filter-bar">
+      <input class="search" id="filter" placeholder="Filter by operation name…" />
+      <button class="btn" id="refreshBtn">↻</button>
+      <button class="btn danger" id="clearBtn">Clear</button>
+    </div>
+    <div id="captureList"></div>
+  </div>
+
+  <!-- PATCHES -->
+  <div class="panel" id="panel-patches">
+    <div class="section-title">Active patch rules</div>
     <div class="card">
-      <div class="row"><span class="k">Responses patched</span><span class="v green" id="patched">0</span></div>
-      <div class="row"><span class="k">Responses seen</span><span class="v" id="seen">0</span></div>
-      <div class="row"><span class="k">Attached tabs</span><span class="v purple" id="tabs">0</span></div>
+      <div class="row"><span class="k">status</span><span class="v"><span class="pill fix">NOT_REVIEWED</span> → <span class="pill ok">VERIFIED</span></span></div>
+      <div class="row"><span class="k">canUse / canApply / canView</span><span class="v"><span class="pill ok">true</span></span></div>
+      <div class="row"><span class="k">isEligible / eligible</span><span class="v"><span class="pill ok">true</span></span></div>
+      <div class="row"><span class="k">hasQualifyingEducation</span><span class="v"><span class="pill ok">true</span></span></div>
+      <div class="row"><span class="k">formNotFound / notFound</span><span class="v"><span class="pill ok">false</span></span></div>
+      <div class="row"><span class="k">formExists / applicationExists</span><span class="v"><span class="pill ok">true</span></span></div>
+      <div class="row"><span class="k">m2-project-specific-application</span><span class="v"><span class="pill fix">excluded</span> → <span class="pill ok">on</span></span></div>
+      <div class="row"><span class="k">relevance-ready-form-v2</span><span class="v"><span class="pill fix">excluded</span> → <span class="pill ok">on</span></span></div>
+      <div class="row"><span class="k">hai-quick-apply-flow</span><span class="v"><span class="pill ok">on</span></span></div>
+      <div class="row"><span class="k">All requires* flags</span><span class="v"><span class="pill ok">false</span></span></div>
+      <div class="row"><span class="k">GraphQL errors array</span><span class="v"><span class="pill ok">[ ]</span></span></div>
+      <div class="row"><span class="k">Endpoints</span><span class="v" style="color:#fb923c">/hai + /hs</span></div>
     </div>
-  </div>
-
-  <!-- What's being patched -->
-  <div class="section" style="margin-top:12px">
-    <div class="section-title">Patches active</div>
-    <div class="card">
-      <div class="row">
-        <span class="k">status</span>
-        <span class="v"><span class="pill fix">NOT_REVIEWED</span> → <span class="pill ok">VERIFIED</span></span>
-      </div>
-      <div class="row">
-        <span class="k">canUse (KYC)</span>
-        <span class="v green">true</span>
-      </div>
-      <div class="row">
-        <span class="k">hasQualifyingEducation</span>
-        <span class="v green">true</span>
-      </div>
-      <div class="row">
-        <span class="k">m2-project-specific-application</span>
-        <span class="v"><span class="pill fix">excluded</span> → <span class="pill ok">on</span></span>
-      </div>
-      <div class="row">
-        <span class="k">relevance-ready-form-v2</span>
-        <span class="v"><span class="pill fix">excluded</span> → <span class="pill ok">on</span></span>
-      </div>
-      <div class="row">
-        <span class="k">Endpoints</span>
-        <span class="v orange">/hai + /hs</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Activity log -->
-  <div class="section" style="margin-top:12px">
-    <div class="section-title">Activity log</div>
-    <div id="log"><div class="entry" style="color:#334155">Waiting for requests…</div></div>
   </div>
 
   <footer>Testing only · Chrome debugger banner is normal</footer>
