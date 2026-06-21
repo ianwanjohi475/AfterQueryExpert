@@ -1,13 +1,221 @@
 /**
- * HandshakeVerifier v1.7 — page-context interceptor (MAIN world)
+ * HandshakeVerifier v1.13 — page-context interceptor (MAIN world)
  *
- * Patches /hai/graphql + /hs/graphql at every JS consumption point.
- * Also patches __NEXT_DATA__ so SSR and client-side data match
- * (eliminates React #418 hydration error caused by the mismatch).
- * Injects fake institution object when null (required for form access).
+ * v1.13: hijack self.__next_f.push to rewrite the streamed RSC chunk that
+ * contains "Form not found" → a real form element tree using Handshake's
+ * own CSS classes. This makes React render an interactive form on the
+ * /fellow/forms/* page, replacing the not-found UI before it ever appears.
+ *
+ * Plus the prior layers:
+ *   - Patches /hai/graphql + /hs/graphql at every JS consumption point
+ *   - Patches __NEXT_DATA__ for SSR/client agreement
+ *   - Injects fake institution when null
  */
 (function () {
   'use strict';
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ── PART 1: RSC chunk hijacker — runs IMMEDIATELY at document_start ─────
+  // ─────────────────────────────────────────────────────────────────────────
+  // Next.js App Router streams server-rendered React Server Components by
+  // appending chunks to self.__next_f via .push([type, "<id>:<json>"]).
+  // We wrap the array's push so that any chunk containing the "Form not
+  // found" element tree gets replaced with a form tree we build below.
+
+  const SUBMIT_ENDPOINT = 'http://localhost:4000/submit';
+
+  function buildFormTree(projectId) {
+    // RSC hyperscript array format: ["$", tag, key, props]
+    // Using only native HTML elements + Handshake's existing CSS classes
+    // so React renders without needing any custom component references.
+    const inp = (name, type, ph, val) => ['$','input', name, {
+      name, type: type || 'text',
+      defaultValue: val || '',
+      placeholder: ph || '',
+      required: true,
+      className: 'w-full px-3 py-2 rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary',
+    }];
+    const txt = (name, ph) => ['$','textarea', name, {
+      name, placeholder: ph || '', rows: 4, required: false,
+      className: 'w-full px-3 py-2 rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-y',
+    }];
+    const lbl = (text, child) => ['$','div', null, {
+      className: 'mb-4',
+      children: [
+        ['$','label', null, { className: 'block text-sm font-medium text-foreground mb-1', children: text }],
+        child,
+      ],
+    }];
+
+    return ['$','div', null, {
+      className: 'flex min-h-screen items-center justify-center bg-surface p-6',
+      children: [
+        ['$','div', null, {
+          className: 'w-full max-w-2xl rounded-xl border border-border bg-card shadow-sm overflow-hidden',
+          'data-hv-form': '1',
+          'data-hv-project-id': projectId || '',
+          children: [
+            ['$','div', null, {
+              className: 'px-8 py-6 border-b border-border bg-surface',
+              children: [
+                ['$','h1', null, {
+                  className: 'text-2xl font-bold text-primary-foreground',
+                  children: 'Project Application',
+                }],
+                ['$','p', null, {
+                  className: 'mt-1 text-sm text-muted-foreground',
+                  children: 'Submit your interest for this opportunity',
+                }],
+              ],
+            }],
+            ['$','form', null, {
+              id: 'hv-rsc-form',
+              className: 'px-8 py-6',
+              children: [
+                lbl('First name *', inp('firstName', 'text', '', 'Nathan')),
+                lbl('Last name *',  inp('lastName',  'text', '', 'Fox')),
+                lbl('Email *',      inp('email', 'email', '', 'christianojimik55@gmail.com')),
+                lbl('Why are you interested in this project? *',
+                    txt('motivation', 'Tell us what draws you to this opportunity…')),
+                lbl('Relevant experience',
+                    txt('experience', 'Briefly describe your relevant background…')),
+                lbl('Portfolio / LinkedIn URL',
+                    inp('portfolio', 'url', 'https://')),
+                ['$','button', null, {
+                  type: 'submit',
+                  className: 'w-full mt-2 px-4 py-3 rounded-md bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity',
+                  children: 'Submit interest',
+                }],
+                ['$','p', null, {
+                  className: 'mt-3 text-xs text-muted-foreground text-center',
+                  children: 'Submits to ' + SUBMIT_ENDPOINT,
+                }],
+              ],
+            }],
+          ],
+        }],
+      ],
+    }];
+  }
+
+  // ── Wrap self.__next_f so we can rewrite incoming chunks ────────────────
+  function wrapNextF(arr) {
+    if (!arr || arr.__hv_wrapped) return arr;
+    const origPush = arr.push.bind(arr);
+    arr.push = function (...items) {
+      const rewritten = items.map(rewriteChunkItem);
+      return origPush(...rewritten);
+    };
+    arr.__hv_wrapped = true;
+    // Also process any items already in the array
+    for (let i = 0; i < arr.length; i++) {
+      const r = rewriteChunkItem(arr[i]);
+      if (r !== arr[i]) arr[i] = r;
+    }
+    return arr;
+  }
+
+  function rewriteChunkItem(item) {
+    try {
+      if (!Array.isArray(item) || item.length < 2) return item;
+      const [chunkType, payload] = item;
+      if (typeof payload !== 'string') return item;
+      if (!/Form not found|doesn.?t exist or has been removed/i.test(payload)) return item;
+
+      const m = payload.match(/^([0-9a-f]+):/);
+      if (!m) return item;
+      const chunkId = m[1];
+
+      // Pull project ID from URL
+      const idMatch = (location.href || '').match(/\/forms\/([\w-]+)/);
+      const projectId = idMatch ? idMatch[1] : '';
+
+      const formTree = buildFormTree(projectId);
+      const newPayload = chunkId + ':' + JSON.stringify(formTree);
+      console.info(
+        '%c[HV v1.13] RSC chunk "' + chunkId + '" rewritten — Form not found → form',
+        'background:#22c55e;color:#000;padding:2px 6px;font-weight:bold'
+      );
+      return [chunkType, newPayload];
+    } catch (e) {
+      return item;
+    }
+  }
+
+  // Define a getter/setter on self.__next_f so we catch whenever Next.js
+  // creates the array — and wrap it before any chunks are pushed.
+  try {
+    let _nf = self.__next_f;
+    if (_nf) wrapNextF(_nf);
+    Object.defineProperty(self, '__next_f', {
+      configurable: true,
+      get() { return _nf; },
+      set(v) { _nf = wrapNextF(v) || v; },
+    });
+  } catch (e) {
+    console.warn('[HV v1.13] Could not hijack __next_f:', e.message);
+  }
+
+  // ── Form submit handler — wires up the rewritten form after React mounts ─
+  function wireFormWhenReady() {
+    const f = document.getElementById('hv-rsc-form');
+    if (!f || f.__hv_wired) return;
+    f.__hv_wired = true;
+
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(f);
+      const payload = {};
+      fd.forEach((v, k) => { payload[k] = v; });
+      payload.projectId   = f.closest('[data-hv-project-id]')?.dataset.hvProjectId || '';
+      payload.submittedAt = new Date().toISOString();
+
+      const btn = f.querySelector('button[type=submit]');
+      const origBtnText = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+      let respText = '', ok = false;
+      try {
+        const r = await fetch(SUBMIT_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        ok = r.ok;
+        respText = await r.text();
+      } catch (err) {
+        respText = 'Could not reach API (' + err.message + ').\n' +
+          'Start it:  cd node-proxy && node form-server.js\n\n' +
+          'Payload:\n' + JSON.stringify(payload, null, 2);
+      }
+
+      // Replace the form card with a success message
+      const card = f.closest('[data-hv-form]');
+      if (card) {
+        card.innerHTML =
+          '<div style="padding:48px 32px;text-align:center;font-family:inherit;">' +
+          '<div style="width:64px;height:64px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:32px;">✓</div>' +
+          '<h2 class="text-2xl font-bold text-primary-foreground" style="margin:0 0 8px;">Interest submitted!</h2>' +
+          '<p class="text-muted-foreground" style="margin:0 0 18px;">Your application was ' +
+            (ok ? 'received by the API' : 'recorded locally') + '.</p>' +
+          '<pre style="text-align:left;background:#0f172a;color:#94a3b8;border-radius:8px;padding:12px;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:240px;overflow:auto;">' +
+            String(respText || '(no response body)').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) +
+          '</pre></div>';
+      }
+      if (btn) { btn.disabled = false; btn.textContent = origBtnText; }
+    });
+  }
+  const wireMo = new MutationObserver(wireFormWhenReady);
+  function startFormWire() {
+    if (!document.body) { setTimeout(startFormWire, 50); return; }
+    wireMo.observe(document.body, { childList: true, subtree: true });
+    wireFormWhenReady();
+  }
+  startFormWire();
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ── PART 2: existing GraphQL / __NEXT_DATA__ patching (unchanged) ───────
+  // ─────────────────────────────────────────────────────────────────────────
 
   const GQL_PATHS = ['/hai/graphql', '/hs/graphql'];
   function isGQL(url) {

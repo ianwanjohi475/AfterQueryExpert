@@ -1,53 +1,55 @@
 /**
- * HandshakeVerifier v1.11 — form-inject (non-invasive)
+ * HandshakeVerifier v1.13 — form-inject (status check only)
  *
- * NO overlay. We rely on background.js + intercept.js injecting a synthetic
- * form object into the GraphQL response so Handshake's own React component
- * renders. This file only:
- *   1. Logs all GraphQL captures to console for debugging (HV_DUMP helper)
- *   2. After 6 s, if "Form not found" is STILL visible, shows a minimal
- *      warning banner (not a full overlay) so the user knows the extension
- *      is running but Handshake's component rejected the synthetic form.
+ * The heavy work — rewriting the Next.js RSC chunk that contains
+ * "Form not found" — is now done at document_start in intercept.js
+ * (PART 1: RSC chunk hijacker). This file only reports whether the
+ * rewrite worked, so we know whether to fall back further.
  */
 (function () {
   'use strict';
 
   if (!/\/fellow\/forms\//.test(location.href)) return;
 
-  console.info('%c[HV v1.11] On form page — waiting for Handshake\'s own form to render',
-    'color:#22c55e;font-weight:bold');
-
-  // ── Last-resort banner (only if form still not found after 6 s) ────────────
-  const NOT_FOUND_RX = /form not found|doesn.?t exist or has been removed/i;
-
-  function addBanner(msg) {
-    if (document.getElementById('hv-banner-v11')) return;
-    const b = document.createElement('div');
-    b.id = 'hv-banner-v11';
-    b.style.cssText =
-      'position:fixed;top:0;left:0;right:0;z-index:2147483647;' +
-      'background:#7c3aed;color:#fff;font:13px/1.4 system-ui,sans-serif;' +
-      'padding:10px 16px;text-align:center;';
-    b.textContent = '[HV] ' + msg;
-    document.body && document.body.appendChild(b);
-  }
-
   setTimeout(() => {
+    const formEl = document.getElementById('hv-rsc-form');
     const bodyText = document.body ? document.body.innerText : '';
-    if (NOT_FOUND_RX.test(bodyText)) {
-      addBanner(
-        'Handshake\'s own form component rejected the synthetic data. ' +
-        'Type HV_DUMP in the console and share the output so we can fix the schema.'
+    if (formEl) {
+      console.info(
+        '%c[HV v1.13] ✓ RSC rewrite succeeded — form is rendered',
+        'background:#22c55e;color:#000;padding:2px 6px;font-weight:bold'
       );
+    } else if (/form not found|doesn.?t exist or has been removed/i.test(bodyText)) {
       console.warn(
-        '%c[HV v1.11] Synthetic form was rejected — Handshake form component still showing "not found".',
+        '%c[HV v1.13] ✗ RSC rewrite did not catch the chunk — falling back to DOM injection',
         'background:#ef4444;color:#fff;padding:2px 6px;font-weight:bold'
       );
-      console.warn('[HV] Type HV_DUMP to capture the real GraphQL ops and share them.');
-    } else {
-      console.info('%c[HV v1.11] Handshake\'s form rendered successfully!',
-        'color:#22c55e;font-weight:bold');
+      // Last-resort DOM swap so the user is never stuck on "Form not found"
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+      let target = null;
+      while (walker.nextNode()) {
+        if (/form not found/i.test(walker.currentNode.nodeValue)) {
+          let el = walker.currentNode.parentElement;
+          for (let i = 0; i < 5 && el && el.parentElement; i++) {
+            if (el.offsetHeight > 200) break;
+            el = el.parentElement;
+          }
+          target = el;
+          break;
+        }
+      }
+      if (target) {
+        const projectId = (location.href.match(/\/forms\/([\w-]+)/) || [])[1] || '';
+        target.innerHTML =
+          '<div class="flex min-h-screen items-center justify-center bg-surface p-6">' +
+          '<div class="w-full max-w-2xl rounded-xl border border-border bg-card shadow-sm overflow-hidden" data-hv-form="1" data-hv-project-id="' + projectId + '">' +
+            '<div class="px-8 py-6 border-b border-border bg-surface">' +
+              '<h1 class="text-2xl font-bold text-primary-foreground">Project Application</h1>' +
+              '<p class="mt-1 text-sm text-muted-foreground">Submit your interest for this opportunity</p>' +
+            '</div>' +
+            '<form id="hv-rsc-form" class="px-8 py-6"></form>' +
+          '</div></div>';
+      }
     }
-  }, 6000);
-
+  }, 1200);
 })();
