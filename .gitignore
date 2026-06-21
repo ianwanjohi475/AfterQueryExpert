@@ -2,3 +2,15 @@ jakacia-williams-06-20-2026.zip
 *.pyc
 __pycache__/
 .pytest_cache/
+
+# Pipeline outputs / secrets
+.env
+.env.*
+!.env.example
+work/
+output/
+*.mp4
+*.mp3
+*.wav
+*.srt
+*.ass
