@@ -286,18 +286,18 @@ function patchRSCFormNotFound(html, url) {
       const formTree = buildRSCFormTree(projectId);
       const newPayload = rowId + ':' + JSON.stringify(formTree);
       rewriteCount++;
-      console.log('[HV v1.14] CDP RSC rewrite: row', rowId, '→ form (project:', projectId || 'unknown', ')');
+      console.log('[HV v1.14.3] CDP RSC rewrite: row', rowId, '→ form (project:', projectId || 'unknown', ')');
       // Preserve the original script tag attributes (including any CSP nonce)
       return '<script' + attrs + '>self.__next_f.push(' +
         JSON.stringify([chunkType, newPayload]) + ')</script>';
     } catch (e) {
-      console.warn('[HV v1.14] CDP RSC rewrite failed:', e.message);
+      console.warn('[HV v1.14.3] CDP RSC rewrite failed:', e.message);
       return match;
     }
   });
 
   if (rewriteCount === 0) {
-    console.warn('[HV v1.14] No RSC chunks rewritten despite "Form not found" in HTML — regex may need updating');
+    console.warn('[HV v1.14.3] No RSC chunks rewritten despite "Form not found" in HTML — regex may need updating');
   }
   return out;
 }
