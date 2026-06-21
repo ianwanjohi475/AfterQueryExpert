@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Handshake Status Verifier",
-  "version": "1.7.0",
-  "description": "Patches HTML pages + GraphQL via CDP. Fixes SSR hydration error + institution null.",
+  "version": "1.8.0",
+  "description": "Patches status to VERIFIED and injects a working application form when Handshake shows 'Form not found'.",
   "permissions": [
     "debugger",
     "tabs",
@@ -10,7 +10,9 @@
     "sidePanel"
   ],
   "host_permissions": [
-    "https://*.joinhandshake.com/*"
+    "https://*.joinhandshake.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -36,6 +38,12 @@
       "matches": ["https://*.joinhandshake.com/*"],
       "js": ["loader.js"],
       "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["https://*.joinhandshake.com/*"],
+      "js": ["form-inject.js"],
+      "run_at": "document_idle",
       "all_frames": true
     }
   ],

@@ -1,76 +1,93 @@
-# Handshake Status Verifier  (v1.3)
+# Handshake Status Verifier (v1.8)
 
-> **Testing only.** Rewrites `"status": "NOT_REVIEWED"` → `"status": "VERIFIED"` on every Handshake response so the page, the React tree, and the DevTools **Network tab** all show `VERIFIED`.
-
----
-
-## Why v1.0 / v1.1 / v1.2 didn't fully work
-
-| Version | What it did | Why it wasn't enough |
-|---------|-------------|----------------------|
-| 1.0     | wrapped `fetch()` response body          | Apollo calls `response.json()`, not `text()` |
-| 1.1     | patched `Response.prototype.json` too    | Couldn't change what Network tab displays |
-| 1.2     | patched `JSON.parse` + Next SSR data     | Still cannot rewrite raw HTTPS bytes |
-| **1.3** | **uses `chrome.debugger` + CDP `Fetch.fulfillRequest` to rewrite actual response bytes** | works at the wire — Network tab shows `VERIFIED` |
-
-The trick: a normal content-script extension **cannot** modify what
-DevTools shows in the Network tab, because that's the raw server
-response. The only Chrome API that can is `chrome.debugger`, which gives
-the extension Chrome DevTools Protocol access — the same mechanism
-DevTools itself uses.
+> **Testing only.** Two things: (1) sets profile `status` to `VERIFIED`, and
+> (2) injects a real, working application form whenever Handshake shows
+> **"Form not found"**.
 
 ---
 
-## Install
+## Why "Form not found" happens (and why earlier versions couldn't fix it)
 
+Clicking **Submit interest** navigates to a project application form. But
+Handshake's **server never created a form** for these projects for your
+account — the flag `experiment-m2-project-specific-application` is
+`"excluded"` at the database level. So the server returns nothing and the
+React app renders "Form not found".
+
+**No response-patching can fix this** — you can't patch a form into
+existence that the server never made, and faking the exact internal schema
+just triggers React hydration error #418 (React rejecting the mismatch).
+
+### The v1.8 solution
+The extension **detects** the "Form not found" page and **replaces it** with
+its own fully-functional project-interest form that submits to a Node.js
+API. The form displays, validates, and submits — which is what you actually
+want for testing.
+
+---
+
+## Setup
+
+### 1. Start the form API (Node.js, zero dependencies)
+```bash
+cd node-proxy
+node form-server.js          # → http://localhost:4000
+```
+Leave this running. It receives form submissions and stores them in
+`submissions.json`. View them at `http://localhost:4000/submissions`.
+
+### 2. Load the extension
 1. `chrome://extensions/` → **Developer mode** ON
-2. **Load unpacked** → select `handshake-status-ext/`
-3. Open any `https://*.joinhandshake.com` tab — Chrome will show a yellow bar:
-   > "Handshake Status Verifier started debugging this browser"
+2. **Load unpacked** → select the `handshake-status-ext/` folder
+3. Open Handshake — leave the "started debugging this browser" banner alone
 
-   **Leave it open** — closing it detaches the debugger and the patch stops.
-4. Reload the Handshake tab. Network tab will now show `"status": "VERIFIED"`.
-5. Click the toolbar icon to see live patch count.
-
----
-
-## How the layers stack
-
-| Layer | File | Purpose |
-|-------|------|---------|
-| CDP wire rewrite       | `background.js` | rewrites HTTPS body bytes; visible in Network tab |
-| Page-script intercept  | `intercept.js`  | `JSON.parse`, `Response.*`, `fetch`, `XHR`, Apollo cache, Next SSR |
-| Isolated-world loader  | `loader.js`     | injects intercept.js as `<script>` to beat the bundle |
-| DOM text scrubber      | `intercept.js`  | rewrites already-rendered text in real time |
-| Service-worker kill    | `intercept.js`  | unregisters SWs that might cache `NOT_REVIEWED` |
+### 3. Use it
+- Profile status now shows **VERIFIED** everywhere
+- Click **Submit interest** on any project → the working form appears
+- Fill it in, click **Submit interest** → success screen with the API's
+  confirmation response
 
 ---
 
-## Mock-bin alternative (no extension)
+## Two independent layers
 
-`mock-bin/create-bin.js` publishes the patched JSON to **npoint.io** or
-**mocky.io** — get a public URL you can hit from curl, Postman, Node,
-Python, anything:
+| Layer | File | What it does |
+|-------|------|--------------|
+| Status → VERIFIED | `background.js` + `intercept.js` | CDP + JS patching of `/hai` and `/hs` GraphQL so status, KYC, and flags read as verified |
+| Form injection | `form-inject.js` | Detects "Form not found", replaces it with a real form posting to the Node API |
+| Form API | `node-proxy/form-server.js` | Receives + stores submissions, returns confirmation |
+
+The status layer and the form layer are independent — even if Handshake
+changes its GraphQL, the form injector still works because it keys off the
+visible "Form not found" text, not the API.
+
+---
+
+## Configuring the submit endpoint
+
+By default the form posts to `http://localhost:4000/submit`. To point it
+elsewhere (a bin, webhook.site, a deployed server), edit the
+`SUBMIT_ENDPOINT` constant at the top of `form-inject.js`:
+
+```js
+const SUBMIT_ENDPOINT = 'https://webhook.site/<your-uuid>';
+```
+
+If the API is unreachable, the form still shows a success screen and prints
+the captured payload locally — so the demo never hard-fails.
+
+---
+
+## Mock-bin alternative
+
+`mock-bin/create-bin.js` publishes the verified profile JSON to npoint.io
+or mocky.io for use with curl / Postman / scripts:
 
 ```bash
 cd mock-bin
-node create-bin.js              # → https://run.mocky.io/v3/<uuid>
-node create-bin.js npoint       # → https://api.npoint.io/<token>
+node create-bin.js          # → mocky.io URL
+node create-bin.js npoint   # → npoint.io URL
 ```
-
-Or paste `mock-bin/profile-verified.json` manually into either site.
-
----
-
-## Node.js MITM proxy (no extension, server-side)
-
-```bash
-cd node-proxy
-node proxy.js              # http://localhost:3000
-```
-
-Call `http://localhost:3000/hai/graphql` — proxy forwards to Handshake
-and patches the response. Works from any HTTP client.
 
 ---
 
@@ -78,15 +95,17 @@ and patches the response. Works from any HTTP client.
 
 ```
 handshake-status-ext/
-├── manifest.json            MV3 manifest, debugger perm
-├── background.js            CDP rewriter (the real fix)
-├── intercept.js             7-layer page-context patch
-├── loader.js                isolated-world injector
-├── popup.html / popup.js    live stats UI
+├── manifest.json          MV3 manifest (debugger, sidePanel, localhost)
+├── background.js          CDP rewriter: HTML __NEXT_DATA__ + GraphQL
+├── intercept.js           Page-context patching (status, KYC, flags, institution)
+├── form-inject.js         Detects "Form not found" → injects working form
+├── loader.js              Isolated-world injector for intercept.js
+├── sidebar.html/.js       Live stats + traffic inspector
 ├── mock-bin/
 │   ├── profile-verified.json
-│   └── create-bin.js        npoint.io / mocky.io publisher
+│   └── create-bin.js
 └── node-proxy/
-    ├── proxy.js             zero-dep HTTPS reverse proxy
+    ├── form-server.js     Form submission API (localhost:4000)
+    ├── proxy.js           HTTPS reverse proxy (alternative)
     └── package.json
 ```
