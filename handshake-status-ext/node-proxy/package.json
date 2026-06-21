@@ -1,0 +1,12 @@
+{
+  "name": "handshake-status-proxy",
+  "version": "1.0.0",
+  "description": "Local HTTPS proxy that patches Handshake GraphQL status to VERIFIED",
+  "main": "proxy.js",
+  "scripts": {
+    "start": "node proxy.js"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}

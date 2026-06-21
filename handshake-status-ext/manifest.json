@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Handshake Status Verifier",
+  "version": "1.0.0",
+  "description": "Intercepts GraphQL responses and sets profile status to VERIFIED — for testing only.",
+  "permissions": [],
+  "host_permissions": [
+    "https://ai.joinhandshake.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://ai.joinhandshake.com/*"],
+      "js": ["intercept.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Handshake Status Verifier"
+  }
+}
