@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Handshake Status Verifier",
-  "version": "1.11.0",
-  "description": "Patches status to VERIFIED; injects synthetic form object into GraphQL so Handshake's own form component renders.",
+  "version": "1.12.0",
+  "description": "Patches status to VERIFIED; dumps __NEXT_DATA__ on form pages so we can reverse-engineer where the not-found decision is baked into SSR.",
   "permissions": [
     "debugger",
     "tabs",

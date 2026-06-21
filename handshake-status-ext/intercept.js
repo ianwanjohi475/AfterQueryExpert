@@ -356,8 +356,49 @@
         return data;
       },
     });
+    // HV_NEXT — dumps window.__NEXT_DATA__ (the SSR baked data)
+    Object.defineProperty(window, 'HV_NEXT', {
+      configurable: true,
+      get() {
+        const d = window.__NEXT_DATA__;
+        const json = d ? JSON.stringify(d, null, 2) : '(no __NEXT_DATA__)';
+        console.log('%c[HV] __NEXT_DATA__ — copy and send back:',
+          'background:#22c55e;color:#000;padding:2px 6px;font-weight:bold');
+        console.log(json);
+        try { navigator.clipboard.writeText(json); console.log('[HV] (copied to clipboard)'); } catch {}
+        return d;
+      },
+    });
   } catch {}
 
-  console.info('%c[HV v1.10] HTML+GraphQL patched | form-page logger active | type HV_DUMP in console',
+  // Auto-dump __NEXT_DATA__ on form pages after a short delay (no user action needed)
+  if (/\/fellow\/forms\//.test(location.href)) {
+    setTimeout(() => {
+      try {
+        const d = window.__NEXT_DATA__;
+        if (d) {
+          console.log('%c[HV NEXT-DATA] Auto-dump on form page:',
+            'background:#7c3aed;color:#fff;padding:2px 6px;font-weight:bold');
+          console.log(JSON.stringify(d, null, 2));
+        } else {
+          console.warn('[HV] No __NEXT_DATA__ found on form page');
+        }
+        // Also scan all <script> tags for any "form"-keyed JSON, since Handshake
+        // may use a different bootstrap mechanism than vanilla Next.js
+        document.querySelectorAll('script').forEach((s, i) => {
+          const t = s.textContent || '';
+          if (t.length > 200 && (t.includes('"form') || t.includes('"Form'))) {
+            console.log('%c[HV SCRIPT-' + i + '] form-related script tag:',
+              'background:#0891b2;color:#fff;padding:2px 6px');
+            console.log(t.slice(0, 4000));
+          }
+        });
+      } catch (e) {
+        console.warn('[HV] Auto-dump failed:', e.message);
+      }
+    }, 1500);
+  }
+
+  console.info('%c[HV v1.12] HTML+GraphQL patched | type HV_DUMP or HV_NEXT in console',
     'color:#22c55e;font-weight:bold');
 })();
