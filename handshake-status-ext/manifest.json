@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Handshake Status Verifier",
-  "version": "1.6.0",
-  "description": "Rewrites /hai/graphql + /hs/graphql via CDP. Auto-logs form requests for diagnosis.",
+  "version": "1.7.0",
+  "description": "Patches HTML pages + GraphQL via CDP. Fixes SSR hydration error + institution null.",
   "permissions": [
     "debugger",
     "tabs",
