@@ -61,7 +61,7 @@ services:
 
   # Browser front-end. Open http://<host-ip>:8000 and pick a phone.
   web:
-    image: ${WS_SCRCPY_IMAGE:-pierfra/ws-scrcpy:latest}
+    image: ${WS_SCRCPY_IMAGE:-scavin/ws-scrcpy:latest}
     container_name: cloud-phone-web
     restart: unless-stopped
     network_mode: host        # needs to reach the adb ports above on the host
