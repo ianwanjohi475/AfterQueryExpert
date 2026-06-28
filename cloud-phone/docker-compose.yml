@@ -18,6 +18,9 @@ services:
     restart: unless-stopped
     volumes:
       - phone1-data:/data
+    # Virtual camera: uncomment after running ./phone.sh camera <video.mp4>
+    # devices:
+    #   - "/dev/video10:/dev/video10"
     ports:
       - "5555:5555"          # adb: connect with `adb connect localhost:5555`
     command:

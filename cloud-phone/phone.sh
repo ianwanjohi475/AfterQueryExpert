@@ -10,6 +10,9 @@
 #   ./phone.sh apk  <phone> <file>   install an APK into a phone
 #   ./phone.sh app  <phone> <pkg>    launch an installed app by package name
 #   ./phone.sh proxy <phone> host:port | clear   set/clear an HTTP proxy
+#   ./phone.sh fingerprint <phone> [show]        randomise device identity (anti-detect)
+#   ./phone.sh gps  <phone> <pkg> <lat> <lng>    authorise a fake-GPS app
+#   ./phone.sh camera <video.mp4>                feed a video as a virtual camera
 #   ./phone.sh adb  <phone> -- <args...>         run any adb command on a phone
 #   ./phone.sh shell <phone>         open an interactive shell on a phone
 #
@@ -120,6 +123,66 @@ case "$cmd" in
     [[ $# -ge 1 ]] || die "Usage: ./phone.sh shell <phone>"
     target="$(connect "$1")"
     exec adb -s "$target" shell
+    ;;
+
+  fingerprint)
+    # Randomise device identity (anti-detect basics). Needs a Magisk-enabled
+    # image (e.g. fahaddz/redroid:13) because it uses `resetprop`. Props reset
+    # on reboot, so re-run this after each ./phone.sh up.
+    need_adb
+    [[ $# -ge 1 ]] || die "Usage: ./phone.sh fingerprint <phone> [show]"
+    target="$(connect "$1")"
+    if [[ "${2:-}" == "show" ]]; then
+      adb -s "$target" shell getprop ro.product.model
+      adb -s "$target" shell getprop ro.product.brand
+      adb -s "$target" shell getprop ro.build.fingerprint
+      adb -s "$target" shell settings get secure android_id
+      exit 0
+    fi
+    # A few real device profiles: brand|manufacturer|model|device|fingerprint
+    PROFILES=(
+      "samsung|samsung|SM-G991B|o1s|samsung/o1sxxx/o1s:13/TP1A.220624.014/G991BXXU5DWA1:user/release-keys"
+      "google|Google|Pixel 7|panther|google/panther/panther:13/TQ3A.230805.001/10316531:user/release-keys"
+      "Xiaomi|Xiaomi|2201123G|cupid|Xiaomi/cupid/cupid:13/RKQ1.211001.001/V14.0.3:user/release-keys"
+      "OnePlus|OnePlus|CPH2451|salami|OnePlus/CPH2451/OP594DL1:13/TP1A.220905.001/123456:user/release-keys"
+    )
+    IFS='|' read -r brand mfr model device fp <<< "${PROFILES[$RANDOM % ${#PROFILES[@]}]}"
+    serial="$(tr -dc 'A-Z0-9' </dev/urandom | head -c 12 || true)"
+    aid="$(tr -dc 'a-f0-9' </dev/urandom | head -c 16 || true)"
+    echo "Applying identity to $1: $brand $model"
+    adb -s "$target" shell "su -c '
+      resetprop ro.product.brand $brand;
+      resetprop ro.product.manufacturer $mfr;
+      resetprop ro.product.model $model;
+      resetprop ro.product.device $device;
+      resetprop ro.product.name $device;
+      resetprop ro.build.fingerprint $fp;
+      resetprop ro.serialno $serial' " \
+      || die "resetprop failed. This needs a Magisk image (set REDROID_IMAGE=fahaddz/redroid:13 in .env)."
+    adb -s "$target" shell settings put secure android_id "$aid" || true
+    green "Identity randomised. Verify with: ./phone.sh fingerprint $1 show"
+    ;;
+
+  gps)
+    # Fake location. Android can't mock location from adb alone, so this points
+    # a fake-GPS app (which you install once) at the coordinates and authorises
+    # it. Install one first, e.g. from the Play Store ("Fake GPS location"),
+    # then pass its package name.
+    need_adb
+    [[ $# -ge 4 ]] || die "Usage: ./phone.sh gps <phone> <package> <lat> <lng>"
+    target="$(connect "$1")"; pkg="$2"; lat="$3"; lng="$4"
+    adb -s "$target" shell appops set "$pkg" android:mock_location allow \
+      || die "Could not authorise $pkg. Is it installed? ./phone.sh apk $1 fakegps.apk"
+    adb -s "$target" shell settings put secure mock_location 1 2>/dev/null || true
+    adb -s "$target" shell monkey -p "$pkg" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+    green "Authorised $pkg as mock-location provider on $1."
+    green "Open it on the phone and set $lat, $lng (apps can't be fully driven from adb)."
+    ;;
+
+  camera)
+    # Virtual camera = feed a video file as the phone's camera. Needs the host
+    # kernel module v4l2loopback and ffmpeg. Run ./setup-camera.sh first.
+    exec ./setup-camera.sh "$@"
     ;;
 
   help|*)

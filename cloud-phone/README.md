@@ -16,9 +16,25 @@ that (your own Linux PC, or a rented Linux machine that allows kernel modules).
   isolated, like separate devices. Easy to add more.
 - **Browser access** — open a URL, see the phone screen, tap and type. Nothing to
   install on the device you're watching from (your laptop, your real phone, etc.).
-- **Any app** — install any APK; optionally use a Google-Play image to sign in and
-  install from the Play Store.
+- **Any app + Play Store** — install any APK, or sign in to the Google Play Store
+  (the default image bundles GApps).
 - **Per-phone HTTP proxy** — give each phone a different IP/proxy.
+- **Device fingerprint randomisation** — basic anti-detect (model, brand, serial,
+  android_id) via `./phone.sh fingerprint`.
+- **Virtual camera & fake GPS** — best-effort, see the honest notes below.
+
+## Honest comparison vs MoreLogin / GoLogin
+
+| Feature | This | Notes |
+|---|---|---|
+| Play Store + install any app | ✅ Full | Default image has GApps; or sideload APKs. |
+| HTTP proxy per phone | ✅ Full | One command. SOCKS5 = install a proxy app inside. |
+| Multiple isolated phones | ✅ Full | |
+| Browser control | ✅ Full | |
+| Device fingerprint spoof | ⚠️ Basic | Randomises key props via Magisk. Not as deep/polished as paid anti-detect. |
+| Camera | ⚠️ Experimental | No real camera; feed a video via v4l2loopback. Not turnkey. |
+| GPS / location | ⚠️ Needs a fake-GPS app | Android blocks adb-only mocking; one app + one command. |
+| Managed proxies / billing UI | ❌ | That's the paid service wrapper — you manage your own. |
 
 ## Requirements (read this first — it's the catch)
 
@@ -78,6 +94,38 @@ then `./phone.sh down && ./phone.sh up`. Open the Play Store on the phone, sign 
 with a Google account, install apps normally. (GApps images are
 community-maintained — the base `redroid` images contain no Google services by
 design.)
+
+## Device fingerprint (basic anti-detect)
+
+Requires the default GApps+Magisk image. Props reset on reboot, so run it after
+each `./phone.sh up`:
+```bash
+./phone.sh fingerprint phone1          # randomise model/brand/serial/android_id
+./phone.sh fingerprint phone1 show     # see the current identity
+```
+This is *basic* anti-detect — good for making phones look distinct, but not the
+deep, audited fingerprinting a paid anti-detect product sells.
+
+## Fake GPS / location
+
+Android won't let adb set location by itself, so install a fake-GPS app once
+(Play Store → "Fake GPS location"), then:
+```bash
+./phone.sh gps phone1 com.lexa.fakegps -1.2921 36.8219   # authorise + open it
+```
+Then set the coordinates inside the app. (`com.lexa.fakegps` is just an example
+package — use whichever app you installed.)
+
+## Virtual camera (experimental)
+
+redroid has no real camera. You can feed a video file as a fake camera using the
+host's `v4l2loopback` module:
+```bash
+./phone.sh camera ~/clip.mp4     # loads v4l2loopback + loops the video
+# then uncomment the 'devices:' lines in docker-compose.yml and ./phone.sh up
+```
+Honest warning: this depends on your kernel supporting `v4l2loopback` and is not
+as seamless as a paid product's virtual camera.
 
 ## Per-phone proxy (different IP per phone)
 
