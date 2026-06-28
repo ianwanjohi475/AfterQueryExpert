@@ -88,6 +88,10 @@ chmod +x setup.sh phone.sh
 In the browser UI you'll see each phone listed (by its adb address, e.g.
 `localhost:5555`). Click one to open the live screen and control it.
 
+**Access it from anywhere (phone, other laptop) like a real cloud phone:** see
+**[REMOTE-ACCESS.md](REMOTE-ACCESS.md)** — free, no card, via Tailscale or a
+Cloudflare Tunnel.
+
 ## Installing apps
 
 **Sideload any APK:**
