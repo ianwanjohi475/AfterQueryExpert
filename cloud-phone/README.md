@@ -45,10 +45,13 @@ that (your own Linux PC, or a rented Linux machine that allows kernel modules).
 | Docker + Docker Compose v2 | Runs the containers. |
 | `adb` (android-tools) | Installs apps and sets proxies. |
 
+> **Want it in the cloud for free?** The easiest free option is an **Oracle Cloud
+> Always-Free ARM server** — full walkthrough in **[ORACLE-CLOUD.md](ORACLE-CLOUD.md)**.
+> It's actually simpler than the Windows route (no kernel building).
+>
 > **Will a cheap VPS work?** Often **no** — shared/OpenVZ VPSes can't load kernel
 > modules. You need a **bare-metal** server, a **KVM VPS that allows custom kernel
-> modules**, or just your **own Linux machine**. This is the real reason "free
-> cloud phone hosting" is hard — it's a hosting limitation, not a software one.
+> modules** (Oracle's free ARM box qualifies), or just your **own Linux machine**.
 >
 > **Windows?** Use **WSL2**, but the default WSL kernel lacks `binder`; you'd need
 > a custom WSL kernel compiled with binder. Doable but advanced — there's a full
