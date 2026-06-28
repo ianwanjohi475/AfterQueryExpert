@@ -1,0 +1,71 @@
+# Self-hosted "cloud phone" stack.
+#
+# Each `phoneN` service is a full Android device (redroid = Remote Android).
+# `web` is ws-scrcpy: it lets you see and control every phone from a browser,
+# so the device you watch from needs nothing but a web browser.
+#
+# Add more phones by copying a phoneN block, bumping the host port (the number
+# before :5555) and the volume name. Then run ./phone.sh up again.
+#
+# IMPORTANT: the host MUST be Linux with the binder kernel module loaded.
+# Run ./phone.sh setup once before the first `up`.
+
+services:
+  phone1:
+    image: ${REDROID_IMAGE:-redroid/redroid:13.0.0-latest}
+    container_name: phone1
+    privileged: true
+    restart: unless-stopped
+    volumes:
+      - phone1-data:/data
+    ports:
+      - "5555:5555"          # adb: connect with `adb connect localhost:5555`
+    command:
+      - androidboot.redroid_width=${WIDTH:-720}
+      - androidboot.redroid_height=${HEIGHT:-1280}
+      - androidboot.redroid_dpi=${DPI:-320}
+      - androidboot.redroid_gpu_mode=${GPU_MODE:-guest}
+
+  phone2:
+    image: ${REDROID_IMAGE:-redroid/redroid:13.0.0-latest}
+    container_name: phone2
+    privileged: true
+    restart: unless-stopped
+    volumes:
+      - phone2-data:/data
+    ports:
+      - "5565:5555"
+    command:
+      - androidboot.redroid_width=${WIDTH:-720}
+      - androidboot.redroid_height=${HEIGHT:-1280}
+      - androidboot.redroid_dpi=${DPI:-320}
+      - androidboot.redroid_gpu_mode=${GPU_MODE:-guest}
+
+  phone3:
+    image: ${REDROID_IMAGE:-redroid/redroid:13.0.0-latest}
+    container_name: phone3
+    privileged: true
+    restart: unless-stopped
+    volumes:
+      - phone3-data:/data
+    ports:
+      - "5575:5555"
+    command:
+      - androidboot.redroid_width=${WIDTH:-720}
+      - androidboot.redroid_height=${HEIGHT:-1280}
+      - androidboot.redroid_dpi=${DPI:-320}
+      - androidboot.redroid_gpu_mode=${GPU_MODE:-guest}
+
+  # Browser front-end. Open http://<host-ip>:8000 and pick a phone.
+  web:
+    image: ${WS_SCRCPY_IMAGE:-pierfra/ws-scrcpy:latest}
+    container_name: cloud-phone-web
+    restart: unless-stopped
+    network_mode: host        # needs to reach the adb ports above on the host
+    depends_on:
+      - phone1
+
+volumes:
+  phone1-data:
+  phone2-data:
+  phone3-data:
