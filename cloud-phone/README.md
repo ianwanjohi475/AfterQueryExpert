@@ -51,7 +51,8 @@ that (your own Linux PC, or a rented Linux machine that allows kernel modules).
 > cloud phone hosting" is hard — it's a hosting limitation, not a software one.
 >
 > **Windows?** Use **WSL2**, but the default WSL kernel lacks `binder`; you'd need
-> a custom WSL kernel compiled with binder. Doable but advanced.
+> a custom WSL kernel compiled with binder. Doable but advanced — there's a full
+> copy-paste walkthrough in **[WINDOWS-WSL2.md](WINDOWS-WSL2.md)**.
 
 ## Quick start
 
