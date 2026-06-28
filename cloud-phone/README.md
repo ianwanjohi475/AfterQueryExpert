@@ -10,6 +10,12 @@ This is honest about what it is: the *software* is free. The thing you pay a
 service like MoreLogin for is the **server that runs it 24/7** — here, you supply
 that (your own Linux PC, or a rented Linux machine that allows kernel modules).
 
+> **Just want working Android phones the easy way (no card, no Docker, no kernel)?**
+> See **[ANDROID-EMULATOR.md](ANDROID-EMULATOR.md)** — Play Store, apps, proxy, GPS,
+> multiple phones, on Windows directly. It isn't a remote cloud or anti-detect, but
+> it's by far the simplest free path. Use the redroid stack below only when you
+> specifically need an always-on cloud server or fingerprint spoofing.
+
 ## What you get
 
 - **Multiple independent phones** (`phone1`, `phone2`, `phone3`, …) — each fully
