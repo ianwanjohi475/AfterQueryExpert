@@ -70,71 +70,64 @@ if [[ "$ACTION" == "revert" ]]; then
 fi
 
 # ---- Apply ------------------------------------------------------------------
+#
+# We get root through `docker exec` (real uid 0 inside the container) instead of
+# adb `su`, because the Magisk su *policy* often denies the adb shell user on
+# these images. docker exec never hits that policy.
 
-# Test that Magisk's su is available — without it nothing on this image can
-# override ro.* props at runtime (SELinux blocks /data/local.prop on A11).
-SU_OK=0
-if adb -s "$DEV" shell 'su -c "id"' 2>/dev/null | grep -q 'uid=0'; then SU_OK=1; fi
-if [[ "$SU_OK" -eq 0 ]]; then
-  red "Magisk su is not available on $PHONE."
-  red "This image must be the *_magisk variant. Check .env -> REDROID_IMAGE."
-  red "If you want a no-Magisk path, switch to redroid:13.0.0-latest:"
-  red "    sed -i 's|^REDROID_IMAGE=.*|REDROID_IMAGE=redroid/redroid:13.0.0-latest|' .env"
-  red "    ./phone.sh wipe && ./phone.sh up"
+CID="$(docker inspect -f '{{.Id}}' "$PHONE" 2>/dev/null || true)"
+[[ -n "$CID" ]] || { red "Container $PHONE is not running. Run ./phone.sh up first."; exit 1; }
+
+dex() { docker exec "$CID" sh -c "$1"; }       # run a shell line as root in Android
+
+# Locate the Magisk resetprop binary (only it can override ro.* at runtime).
+echo "Locating resetprop inside $PHONE..."
+RP="$(dex 'for p in /sbin/resetprop /system/bin/resetprop /debug_ramdisk/.magisk/busybox/resetprop /data/adb/magisk/resetprop $(magisk --path 2>/dev/null)/.magisk/busybox/resetprop; do [ -x "$p" ] && { echo "$p"; break; }; done' 2>/dev/null | tr -d '\r' | head -n1)"
+if [[ -z "$RP" ]]; then
+  # Magisk exposes resetprop as a subcommand too.
+  if dex 'command -v magisk >/dev/null 2>&1'; then RP='magisk resetprop'; fi
+fi
+if [[ -z "$RP" ]]; then
+  red "Could not find resetprop or magisk inside $PHONE."
+  red "This image has no Magisk, so ro.* props can't be overridden at runtime."
+  red "Use the clean Android 13 path instead (newer translator, no Magisk needed):"
+  red "    sed -i 's|^REDROID_IMAGE=.*|REDROID_IMAGE=fahaddz/redroid:13|' .env"
+  red "    docker pull fahaddz/redroid:13 && ./phone.sh wipe && ./phone.sh up"
   exit 1
 fi
-green "Magisk su: OK"
+green "resetprop: $RP"
 
-# 1) Runtime override via resetprop -- effective immediately for the current
-#    boot. Critical: must happen BEFORE Package Manager rescans installed APKs.
-echo "Applying resetprop overrides..."
-adb -s "$DEV" shell 'su -c "
-resetprop ro.product.cpu.abilist x86_64,x86
-resetprop ro.product.cpu.abilist64 x86_64
-resetprop ro.product.cpu.abilist32 x86
-resetprop ro.product.cpu.abi x86_64
-resetprop ro.product.cpu.abi2 x86
-resetprop ro.system.product.cpu.abilist x86_64,x86 2>/dev/null
-resetprop ro.system.product.cpu.abilist64 x86_64 2>/dev/null
-resetprop ro.system.product.cpu.abilist32 x86 2>/dev/null
-resetprop ro.vendor.product.cpu.abilist x86_64,x86 2>/dev/null
-resetprop ro.vendor.product.cpu.abilist64 x86_64 2>/dev/null
-resetprop ro.vendor.product.cpu.abilist32 x86 2>/dev/null
-"' >/dev/null
+# Build the list of resetprop calls once, reuse for runtime + boot script.
+read -r -d '' RP_CMDS <<EOF || true
+$RP ro.product.cpu.abilist x86_64,x86
+$RP ro.product.cpu.abilist64 x86_64
+$RP ro.product.cpu.abilist32 x86
+$RP ro.product.cpu.abi x86_64
+$RP ro.product.cpu.abi2 x86
+$RP ro.system.product.cpu.abilist x86_64,x86
+$RP ro.system.product.cpu.abilist64 x86_64
+$RP ro.system.product.cpu.abilist32 x86
+$RP ro.vendor.product.cpu.abilist x86_64,x86
+$RP ro.vendor.product.cpu.abilist64 x86_64
+$RP ro.vendor.product.cpu.abilist32 x86
+EOF
 
-# 2) Install Magisk module so the same resetprop runs on every boot.
+# 1) Runtime override -- effective immediately, before Play Store rescans.
+echo "Applying resetprop overrides (via docker exec, real root)..."
+dex "$RP_CMDS" >/dev/null 2>&1 || true
+
+# 2) Install a Magisk module so it re-applies on every boot.
 echo "Installing Magisk module abi-x86-only (persists across reboots)..."
 MOD='/data/adb/modules/abi-x86-only'
-adb -s "$DEV" shell "su -c '
-mkdir -p $MOD
-cat > $MOD/module.prop <<EOF
-id=abi-x86-only
-name=ABI x86 only
-version=1.0
-versionCode=1
-author=cloud-phone
-description=Hide arm64-v8a from ABI list so Play Store ships x86_64 splits.
-EOF
-cat > $MOD/post-fs-data.sh <<EOF
-#!/system/bin/sh
-resetprop ro.product.cpu.abilist x86_64,x86
-resetprop ro.product.cpu.abilist64 x86_64
-resetprop ro.product.cpu.abilist32 x86
-resetprop ro.product.cpu.abi x86_64
-resetprop ro.product.cpu.abi2 x86
-resetprop ro.system.product.cpu.abilist x86_64,x86 2>/dev/null
-resetprop ro.system.product.cpu.abilist64 x86_64 2>/dev/null
-resetprop ro.system.product.cpu.abilist32 x86 2>/dev/null
-resetprop ro.vendor.product.cpu.abilist x86_64,x86 2>/dev/null
-resetprop ro.vendor.product.cpu.abilist64 x86_64 2>/dev/null
-resetprop ro.vendor.product.cpu.abilist32 x86 2>/dev/null
-EOF
-chmod 755 $MOD/post-fs-data.sh
-touch $MOD/update'" >/dev/null
+# resetprop in the boot script uses the magisk-provided one on PATH at that time.
+dex "mkdir -p $MOD && \
+  printf 'id=abi-x86-only\nname=ABI x86 only\nversion=1.0\nversionCode=1\nauthor=cloud-phone\ndescription=Hide arm64-v8a so Play Store ships x86_64 splits.\n' > $MOD/module.prop && \
+  { echo '#!/system/bin/sh'; echo 'resetprop ro.product.cpu.abilist x86_64,x86'; echo 'resetprop ro.product.cpu.abilist64 x86_64'; echo 'resetprop ro.product.cpu.abilist32 x86'; echo 'resetprop ro.product.cpu.abi x86_64'; echo 'resetprop ro.product.cpu.abi2 x86'; echo 'resetprop ro.system.product.cpu.abilist x86_64,x86'; echo 'resetprop ro.system.product.cpu.abilist64 x86_64'; echo 'resetprop ro.system.product.cpu.abilist32 x86'; echo 'resetprop ro.vendor.product.cpu.abilist x86_64,x86'; echo 'resetprop ro.vendor.product.cpu.abilist64 x86_64'; echo 'resetprop ro.vendor.product.cpu.abilist32 x86'; } > $MOD/post-fs-data.sh && \
+  chmod 755 $MOD/post-fs-data.sh && touch $MOD/update" >/dev/null 2>&1 || true
 
 # 3) Restart zygote so Package Manager and Play Store re-read the new ABIs.
 echo "Restarting Android framework so Play Store sees the new ABI..."
-adb -s "$DEV" shell 'su -c "stop && start"' >/dev/null 2>&1 || true
+dex 'stop; start' >/dev/null 2>&1 || true
 
 echo -n "Waiting for framework to come back"
 for i in $(seq 1 40); do
@@ -144,12 +137,16 @@ for i in $(seq 1 40); do
   printf '.'
 done
 
-NEW_ABI="$(adb -s "$DEV" shell getprop ro.product.cpu.abilist 2>/dev/null | tr -d '\r\n')"
+NEW_ABI="$(dex 'getprop ro.product.cpu.abilist' 2>/dev/null | tr -d '\r\n')"
 if [[ "$NEW_ABI" == "x86_64,x86" ]]; then
   green "Fix applied. ABI list is now: $NEW_ABI"
 else
   red   "ABI list still reports: $NEW_ABI"
-  red   "Magisk resetprop did not stick. Check: adb -s $DEV shell 'su -c id'"
+  red   "resetprop did not stick. Diagnose with:"
+  red   "   docker exec $PHONE sh -c '$RP --help; getprop | grep abilist'"
+  red   "If this image has no working Magisk, use the Android 13 path:"
+  red   "   sed -i 's|^REDROID_IMAGE=.*|REDROID_IMAGE=fahaddz/redroid:13|' .env"
+  red   "   docker pull fahaddz/redroid:13 && ./phone.sh wipe && ./phone.sh up"
   exit 1
 fi
 
