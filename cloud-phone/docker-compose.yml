@@ -9,6 +9,11 @@
 #
 # IMPORTANT: the host MUST be Linux with the binder kernel module loaded.
 # Run ./phone.sh setup once before the first `up`.
+#
+# ARM app compatibility: Android 12+ (redroid:12.0.0-latest or 13.0.0-latest)
+# ships a newer libndk_translation that handles more ARM64 instructions.
+# If apps crash at startup with SIGILL on an older image, run:
+#   ./phone.sh fix-ndk phone1
 
 services:
   phone1:

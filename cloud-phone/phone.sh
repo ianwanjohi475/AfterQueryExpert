@@ -13,6 +13,7 @@
 #   ./phone.sh fingerprint <phone> [show]        randomise device identity (anti-detect)
 #   ./phone.sh gps  <phone> <pkg> <lat> <lng>    authorise a fake-GPS app
 #   ./phone.sh camera <video.mp4>                feed a video as a virtual camera
+#   ./phone.sh fix-ndk <phone>       fix ARM64 app crash (SIGILL/NDK translation)
 #   ./phone.sh adb  <phone> -- <args...>         run any adb command on a phone
 #   ./phone.sh shell <phone>         open an interactive shell on a phone
 #
@@ -177,6 +178,11 @@ case "$cmd" in
     adb -s "$target" shell monkey -p "$pkg" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
     green "Authorised $pkg as mock-location provider on $1."
     green "Open it on the phone and set $lat, $lng (apps can't be fully driven from adb)."
+    ;;
+
+  fix-ndk)
+    [[ $# -ge 1 ]] || die "Usage: ./phone.sh fix-ndk <phone>"
+    exec ./fix-arm-crash.sh "$1"
     ;;
 
   camera)
