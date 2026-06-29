@@ -39,7 +39,12 @@ PHONE=phone1
 
 # Chrome command-line flags. The leading "_" is REQUIRED -- Chrome treats the
 # first token as argv[0] and ignores it. Don't drop it.
-FLAGS='_ --no-sandbox --disable-gpu --in-process-gpu --single-process --disable-features=MojoIpcz,SharedArrayBuffer --disable-dev-shm-usage --use-gl=swiftshader --disable-gpu-compositing --disable-gpu-rasterization --disable-software-rasterizer --disable-gpu-sandbox --disable-features=VaapiVideoDecoder --enable-features=NoEnclaveSecurity'
+#
+# The critical flag for the SIGTRAP-in-libmonochrome crash on redroid+WSL2 is
+# --js-flags=--jitless. That crash is V8's JIT emitting code that hits a CFI /
+# CET trap on the host CPU. --jitless runs V8 in pure interpreter mode (no JIT,
+# no Sparkplug, no Turbofan, no Maglev) -- slower but doesn't crash.
+FLAGS='_ --no-sandbox --disable-gpu --in-process-gpu --single-process --disable-features=MojoIpcz,SharedArrayBuffer,V8VmFuture,BackForwardCache --disable-dev-shm-usage --use-gl=swiftshader --disable-gpu-compositing --disable-gpu-rasterization --disable-software-rasterizer --disable-gpu-sandbox --js-flags="--jitless --no-sparkplug --no-turbofan --no-maglev --no-opt" --disable-features=VaapiVideoDecoder --disable-partial-raster --disable-features=PartitionAllocBackupRefPtr'
 
 wait_for_boot() {
   # All progress output goes to STDERR so command substitution
@@ -65,15 +70,17 @@ wait_for_boot() {
 apply_chrome_flags() {
   local pip="$1"
   echo "Writing Chrome command-line flags..."
-  adb -s "$pip:5555" shell "echo '$FLAGS' > /data/local/tmp/chrome-command-line"
+  # Use stdin (printf | adb shell cat) so embedded quotes in --js-flags=... do
+  # not get mangled by the shell-in-shell quoting.
+  printf '%s\n' "$FLAGS" | adb -s "$pip:5555" shell 'cat > /data/local/tmp/chrome-command-line'
   adb -s "$pip:5555" shell "chmod 644 /data/local/tmp/chrome-command-line"
 
   # Also try Chrome's debug build path (some images read this instead)
-  adb -s "$pip:5555" shell "echo '$FLAGS' > /data/local/tmp/chrome-debug-command-line" 2>/dev/null || true
+  printf '%s\n' "$FLAGS" | adb -s "$pip:5555" shell 'cat > /data/local/tmp/chrome-debug-command-line' 2>/dev/null || true
 
   # WebView/Trichrome uses a separate flags file. Apps that embed Chromium
   # (Brave, Edge) usually respect their own; doesn't hurt to set it too.
-  adb -s "$pip:5555" shell "echo '$FLAGS' > /data/local/tmp/webview-command-line" 2>/dev/null || true
+  printf '%s\n' "$FLAGS" | adb -s "$pip:5555" shell 'cat > /data/local/tmp/webview-command-line' 2>/dev/null || true
 
   echo "Stopping Chrome..."
   adb -s "$pip:5555" shell am force-stop com.android.chrome 2>/dev/null || true
