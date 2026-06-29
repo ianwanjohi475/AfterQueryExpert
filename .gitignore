@@ -2,3 +2,5 @@ jakacia-williams-06-20-2026.zip
 *.pyc
 __pycache__/
 .pytest_cache/
+
+cloud-phone/.env
