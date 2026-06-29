@@ -72,7 +72,11 @@ yellow "Android: ${ANDROID_VER:-unknown}   ABI list: ${ABI_NOW:-unknown}"
 
 if [[ "$ACTION" == "revert" ]]; then
   echo "Reverting: removing /data/local.prop..."
-  adb -s "$DEV" shell "rm -f /data/local.prop"
+  adb -s "$DEV" shell "su -c 'rm -f /data/local.prop'" \
+    || adb -s "$DEV" shell "rm -f /data/local.prop" \
+    || true
+  CID="$(docker inspect -f '{{.Id}}' "$PHONE" 2>/dev/null || true)"
+  [[ -n "$CID" ]] && docker exec "$CID" rm -f /data/local.prop 2>/dev/null || true
   echo "Restarting $PHONE..."
   docker compose restart "$PHONE"
   wait_online "$DEV" "$PHONE"
@@ -99,8 +103,48 @@ fi
 # (all ReDroid images) and overrides ro.* properties before any app starts.
 # Removing arm64-v8a from the ABI list causes Android to install x86_64 APK
 # splits instead, bypassing the broken NDK translation path entirely.
+#
+# Writing to /data needs root. We try three paths in order:
+#   1. adb shell -> su -c (works if image has Magisk and shell can call su)
+#   2. docker exec into the container as root (always works on ReDroid)
+#   3. adb root + adb shell (works on userdebug images that allow `adb root`)
+PROP_CONTENT='ro.product.cpu.abilist=x86_64,x86
+ro.product.cpu.abilist64=x86_64
+ro.product.cpu.abilist32=x86'
+
 echo "Writing /data/local.prop on $PHONE..."
-adb -s "$DEV" shell "printf 'ro.product.cpu.abilist=x86_64,x86\nro.product.cpu.abilist64=x86_64\nro.product.cpu.abilist32=x86\n' > /data/local.prop"
+WROTE=0
+
+# Method 1: su -c via adb shell
+if adb -s "$DEV" shell "su -c 'cat > /data/local.prop && chmod 644 /data/local.prop'" <<<"$PROP_CONTENT" 2>/dev/null; then
+  if [[ "$(adb -s "$DEV" shell "su -c 'cat /data/local.prop'" 2>/dev/null | tr -d '\r' | head -c 30)" == ro.product* ]]; then
+    WROTE=1; green "  written via: adb su"
+  fi
+fi
+
+# Method 2: docker exec as root into the container
+if [[ "$WROTE" -eq 0 ]]; then
+  CID="$(docker inspect -f '{{.Id}}' "$PHONE" 2>/dev/null || true)"
+  if [[ -n "$CID" ]]; then
+    if printf '%s\n' "$PROP_CONTENT" | docker exec -i "$CID" sh -c 'cat > /data/local.prop && chmod 644 /data/local.prop' 2>/dev/null; then
+      WROTE=1; green "  written via: docker exec"
+    fi
+  fi
+fi
+
+# Method 3: adb root then plain shell redirect
+if [[ "$WROTE" -eq 0 ]]; then
+  adb -s "$DEV" root >/dev/null 2>&1 || true
+  sleep 2
+  adb connect "$DEV" >/dev/null 2>&1 || true
+  if adb -s "$DEV" shell "cat > /data/local.prop && chmod 644 /data/local.prop" <<<"$PROP_CONTENT" 2>/dev/null; then
+    if [[ "$(adb -s "$DEV" shell 'cat /data/local.prop' 2>/dev/null | tr -d '\r' | head -c 30)" == ro.product* ]]; then
+      WROTE=1; green "  written via: adb root"
+    fi
+  fi
+fi
+
+[[ "$WROTE" -eq 1 ]] || { red "Could not write /data/local.prop with any method."; red "Run as root: docker exec -it $PHONE sh -c \"printf '%s' '$PROP_CONTENT' > /data/local.prop\""; exit 1; }
 
 echo "Restarting $PHONE..."
 docker compose restart "$PHONE"
