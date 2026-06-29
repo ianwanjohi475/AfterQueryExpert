@@ -42,8 +42,10 @@ PHONE=phone1
 FLAGS='_ --no-sandbox --disable-gpu --in-process-gpu --single-process --disable-features=MojoIpcz,SharedArrayBuffer --disable-dev-shm-usage --use-gl=swiftshader --disable-gpu-compositing --disable-gpu-rasterization --disable-software-rasterizer --disable-gpu-sandbox --disable-features=VaapiVideoDecoder --enable-features=NoEnclaveSecurity'
 
 wait_for_boot() {
+  # All progress output goes to STDERR so command substitution
+  # `PIP="$(wait_for_boot)"` only captures the final IP on stdout.
   local pip
-  echo -n "Waiting for phone1 to come back online"
+  echo -n "Waiting for phone1 to come back online" >&2
   for i in $(seq 1 90); do
     sleep 2
     pip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' phone1 2>/dev/null || true)"
@@ -51,11 +53,11 @@ wait_for_boot() {
       adb connect "$pip:5555" >/dev/null 2>&1 || true
       local booted
       booted="$(adb -s "$pip:5555" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
-      if [[ "$booted" == "1" ]]; then echo; echo "$pip"; return 0; fi
+      if [[ "$booted" == "1" ]]; then echo >&2; echo "$pip"; return 0; fi
     fi
-    printf '.'
+    printf '.' >&2
   done
-  echo
+  echo >&2
   red "phone1 did not finish booting after 3 min. Check: docker logs phone1"
   return 1
 }
