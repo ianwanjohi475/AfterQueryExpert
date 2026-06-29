@@ -29,7 +29,8 @@ push_one() {
 if [ -d "$SRC" ]; then
   echo "Uploading media from folder: $SRC"
   find "$SRC" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \
-       -o -iname '*.gif' -o -iname '*.webp' -o -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.3gp' \) \
+       -o -iname '*.gif' -o -iname '*.webp' -o -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.3gp' \
+       -o -iname '*.webm' -o -iname '*.mov' -o -iname '*.avi' \) \
   | while read -r f; do push_one "$f"; done
 else
   echo "Uploading file: $SRC"
