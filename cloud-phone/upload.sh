@@ -21,17 +21,19 @@ push_one() {
   local f="$1" base
   base="$(basename "$f")"
   echo "  -> $base"
-  adb -s "$DEV" push "$f" "/sdcard/Pictures/$base" >/dev/null
+  # </dev/null stops adb from swallowing the rest of the file list
+  adb -s "$DEV" push "$f" "/sdcard/Pictures/$base" >/dev/null </dev/null
   adb -s "$DEV" shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
-      -d "file:///sdcard/Pictures/$base" >/dev/null 2>&1 || true
+      -d "file:///sdcard/Pictures/$base" >/dev/null 2>&1 </dev/null || true
 }
 
 if [ -d "$SRC" ]; then
   echo "Uploading media from folder: $SRC"
-  find "$SRC" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \
+  # process substitution (not a pipe) so the loop keeps its own stdin
+  while IFS= read -r f; do push_one "$f"; done < <(
+    find "$SRC" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \
        -o -iname '*.gif' -o -iname '*.webp' -o -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.3gp' \
-       -o -iname '*.webm' -o -iname '*.mov' -o -iname '*.avi' \) \
-  | while read -r f; do push_one "$f"; done
+       -o -iname '*.webm' -o -iname '*.mov' -o -iname '*.avi' \) )
 else
   echo "Uploading file: $SRC"
   push_one "$SRC"
