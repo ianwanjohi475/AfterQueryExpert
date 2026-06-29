@@ -19,21 +19,27 @@ adb -s "$DEV" shell mkdir -p /sdcard/Pictures >/dev/null 2>&1 || true
 
 push_one() {
   local f="$1" base
+  local base ext dest
   base="$(basename "$f")"
-  echo "  -> $base"
+  ext="${base##*.}"
+  case "${ext,,}" in
+    jpg|jpeg|png|gif|webp|bmp|heic) dest=/sdcard/Pictures ;;
+    mp4|mkv|3gp|webm|mov|avi)       dest=/sdcard/Movies ;;
+    mp3|wav|m4a|ogg|flac)           dest=/sdcard/Music ;;
+    *)                              dest=/sdcard/Documents ;;
+  esac
+  echo "  -> $base   ($dest)"
   # </dev/null stops adb from swallowing the rest of the file list
-  adb -s "$DEV" push "$f" "/sdcard/Pictures/$base" >/dev/null </dev/null
+  adb -s "$DEV" shell mkdir -p "$dest" >/dev/null 2>&1 </dev/null || true
+  adb -s "$DEV" push "$f" "$dest/$base" >/dev/null </dev/null
   adb -s "$DEV" shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
-      -d "file:///sdcard/Pictures/$base" >/dev/null 2>&1 </dev/null || true
+      -d "file://$dest/$base" >/dev/null 2>&1 </dev/null || true
 }
 
 if [ -d "$SRC" ]; then
-  echo "Uploading media from folder: $SRC"
+  echo "Uploading ALL files from folder: $SRC"
   # process substitution (not a pipe) so the loop keeps its own stdin
-  while IFS= read -r f; do push_one "$f"; done < <(
-    find "$SRC" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \
-       -o -iname '*.gif' -o -iname '*.webp' -o -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.3gp' \
-       -o -iname '*.webm' -o -iname '*.mov' -o -iname '*.avi' \) )
+  while IFS= read -r f; do push_one "$f"; done < <(find "$SRC" -maxdepth 1 -type f)
 else
   echo "Uploading file: $SRC"
   push_one "$SRC"
