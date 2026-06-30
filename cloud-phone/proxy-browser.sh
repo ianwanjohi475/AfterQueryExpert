@@ -7,8 +7,11 @@
 #   e.g.  sudo ./proxy-browser.sh 161.77.95.162 22325 14aa1d4f37e18 19efe095e4
 set -e
 cd "$(dirname "$0")"
-[ $# -eq 4 ] || { echo "Usage: sudo ./proxy-browser.sh <host> <port> <user> <pass>"; exit 1; }
-HOST=$1; PORT=$2; USERN=$3; PASSW=$4
+[ $# -eq 5 ] || { echo "Usage: sudo ./proxy-browser.sh <phone> <host> <port> <user> <pass>"; exit 1; }
+PHONE=$1; HOST=$2; PORT=$3; USERN=$4; PASSW=$5
+
+declare -A PORTS=( [phone1]=5555 [phone2]=5565 [phone3]=5575 )
+[[ -n "${PORTS[$PHONE]:-}" ]] || { echo "Unknown phone '$PHONE'. Known: ${!PORTS[*]}"; exit 1; }
 
 command -v gost >/dev/null 2>&1 || {
   cd /tmp
@@ -18,15 +21,12 @@ command -v gost >/dev/null 2>&1 || {
 }
 
 GW=$(docker network inspect cloud-phone_default -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}')
-PIP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' phone1)
+PIP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$PHONE")
 
 # make sure nothing is forcing OTHER apps through the proxy
 adb connect "$PIP:5555" >/dev/null 2>&1 || true
 adb -s "$PIP:5555" shell settings put global http_proxy :0 2>/dev/null || true
 iptables -t nat -D PREROUTING -s "$PIP" -p tcp -j REDSOCKS 2>/dev/null || true
-iptables -t nat -F REDSOCKS 2>/dev/null || true
-iptables -t nat -X REDSOCKS 2>/dev/null || true
-pkill -x redsocks 2>/dev/null || true
 
 # (re)start the bridge that adds the SOCKS5 username/password
 pkill -f 'gost -L http://:8080' 2>/dev/null || true
