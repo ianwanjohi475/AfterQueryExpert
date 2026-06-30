@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Handshake KYC Bypass",
   "short_name": "HS KYC",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Marks identity verification as complete: patches tRPC blocking-modal + GraphQL profile status, and removes the 'Identity verification incomplete' banner.",
   "permissions": [
     "debugger",

@@ -1,69 +1,77 @@
 /**
- * Handshake KYC Bypass — content.js (isolated world, document_start)
+ * Handshake KYC Bypass — content.js (isolated world)
  *
- * Last-resort DOM scrubber: removes the "Identity verification incomplete"
- * modal/banner if it still slips through after the response patches.
+ * Removes the "Identity verification incomplete" modal/banner if it slips
+ * through the response patches. Runs only after document.body exists so we
+ * never touch a null reference at document_start.
  */
 (function () {
   'use strict';
 
   const BANNER_TEXT = /identity verification incomplete/i;
 
-  function removeBannerNode(node) {
-    if (!node || node.nodeType !== 1) return false;
-    const txt = node.textContent || '';
-    if (!BANNER_TEXT.test(txt)) return false;
-
-    // Walk up to find the card container (round, has padding) — typically
-    // 3–5 ancestors above the text node.
-    let target = node;
-    for (let i = 0; i < 6 && target && target.parentElement; i++) {
-      const cn = (target.className && String(target.className)) || '';
-      if (/rounded-xl|rounded-2xl|modal|dialog|overlay|backdrop/i.test(cn)) break;
-      target = target.parentElement;
-    }
-    if (target) {
-      target.remove();
-      console.info('[HSKYC] removed identity-verification banner');
-      // Also nuke any fixed-position backdrop / dialog wrapper still in DOM
-      document.querySelectorAll(
-        '[role="dialog"], [aria-modal="true"], .modal-backdrop, [data-state="open"]'
-      ).forEach(el => {
-        const t = el.textContent || '';
-        if (BANNER_TEXT.test(t)) el.remove();
-      });
-      // Unlock body scroll if the modal locked it
+  function unlockScroll() {
+    if (document.documentElement && document.documentElement.style) {
       document.documentElement.style.overflow = '';
+    }
+    if (document.body && document.body.style) {
       document.body.style.overflow = '';
       document.body.style.pointerEvents = '';
-      return true;
     }
-    return false;
+  }
+
+  function findCard(textNode) {
+    let el = textNode && textNode.parentElement;
+    for (let i = 0; i < 6 && el && el.parentElement; i++) {
+      const cn = (el.className && String(el.className)) || '';
+      if (/rounded-xl|rounded-2xl|modal|dialog|overlay|backdrop/i.test(cn)) return el;
+      el = el.parentElement;
+    }
+    return el;
   }
 
   function scan(root) {
     if (!root || root.nodeType !== 1) return;
     if (!BANNER_TEXT.test(root.textContent || '')) return;
-    // Find the deepest element containing only this banner's text
+
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
     while (walker.nextNode()) {
       if (BANNER_TEXT.test(walker.currentNode.nodeValue)) {
-        if (removeBannerNode(walker.currentNode.parentElement)) return;
+        const target = findCard(walker.currentNode);
+        if (target) {
+          target.remove();
+          console.info('[HSKYC] removed identity-verification banner');
+          // Also nuke any modal/dialog wrappers still hanging around
+          document.querySelectorAll(
+            '[role="dialog"], [aria-modal="true"], .modal-backdrop, [data-state="open"]'
+          ).forEach(el => {
+            if (BANNER_TEXT.test(el.textContent || '')) el.remove();
+          });
+          unlockScroll();
+          return;
+        }
       }
     }
   }
 
-  function startObserver() {
-    if (!document.body) { setTimeout(startObserver, 50); return; }
+  function start() {
+    if (!document.body) {
+      // Try again once the body element exists
+      setTimeout(start, 50);
+      return;
+    }
     scan(document.body);
     const mo = new MutationObserver(muts => {
       for (const m of muts) {
-        m.addedNodes.forEach(n => {
-          if (n.nodeType === 1) scan(n);
-        });
+        m.addedNodes.forEach(n => { try { scan(n); } catch (_) {} });
       }
     });
     mo.observe(document.body, { childList: true, subtree: true });
   }
-  startObserver();
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
 })();
