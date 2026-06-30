@@ -13,7 +13,8 @@
 #   ./phone.sh fingerprint <phone> [show]        randomise device identity (anti-detect)
 #   ./phone.sh location <phone> off | on | show  toggle all location providers
 #   ./phone.sh gps  <phone> <pkg> <lat> <lng>    authorise a fake-GPS app
-#   ./phone.sh camera <video.mp4>                feed a video as a virtual camera
+#   ./phone.sh camera <video.mp4|photo.jpg>      feed a video/photo as a virtual camera
+#   ./phone.sh cam-grant <phone> [firefox|chrome|all]  grant camera permission to browser
 #   ./phone.sh fix-ndk <phone>       fix ARM64 app crash (SIGILL/NDK translation)
 #   ./phone.sh adb  <phone> -- <args...>         run any adb command on a phone
 #   ./phone.sh shell <phone>         open an interactive shell on a phone
@@ -287,14 +288,63 @@ case "$cmd" in
     green "Open it on the phone and set $lat, $lng (apps can't be fully driven from adb)."
     ;;
 
+  cam-grant)
+    # Grant the Android camera permission to a browser so it can access the
+    # virtual camera. Run AFTER ./setup-camera.sh patch <phone>.
+    #
+    # Two levels of permission are set:
+    #   pm grant      – runtime manifest permission (the Android dialog "Allow?")
+    #   appops set    – app-ops policy (overrides any "Deny" the user tapped)
+    #
+    # After this, the browser still asks per-site on first visit — tap Allow.
+    # If it still says "no camera": Firefox menu → Settings → Site permissions →
+    # Camera → clear the block for the site, then reload.
+    need_adb
+    [[ $# -ge 1 ]] || die "Usage: ./phone.sh cam-grant <phone> [firefox|chrome|all]"
+    target="$(connect "$1")"
+    browser="${2:-all}"
+
+    grant_pkg() {
+      local pkg="$1"
+      # Only act on installed packages.
+      if adb -s "$target" shell pm list packages 2>/dev/null | grep -qF "package:$pkg"; then
+        adb -s "$target" shell pm grant    "$pkg" android.permission.CAMERA 2>/dev/null || true
+        adb -s "$target" shell appops set  "$pkg" CAMERA allow              2>/dev/null || true
+        green "  Camera granted -> $pkg"
+      fi
+    }
+
+    if [[ "$browser" == "all" || "$browser" == "firefox" ]]; then
+      echo "Granting camera to Firefox variants on $1..."
+      for pkg in org.mozilla.firefox org.mozilla.fenix org.mozilla.firefox_beta org.mozilla.focus; do
+        grant_pkg "$pkg"
+      done
+    fi
+    if [[ "$browser" == "all" || "$browser" == "chrome" ]]; then
+      echo "Granting camera to Chrome on $1..."
+      grant_pkg "com.android.chrome"
+    fi
+
+    echo
+    green "Done. Reload the page in the browser — it should now prompt for camera access."
+    green "Tap 'Allow' when the system dialog appears."
+    green "If blocked in Firefox site settings: Menu → Settings → Site permissions → Camera"
+    ;;
+
   fix-ndk)
     [[ $# -ge 1 ]] || die "Usage: ./phone.sh fix-ndk <phone>"
     exec ./fix-arm-crash.sh "$1"
     ;;
 
   camera)
-    # Virtual camera = feed a video file as the phone's camera. Needs the host
-    # kernel module v4l2loopback and ffmpeg. Run ./setup-camera.sh first.
+    # Virtual camera = feed a video/photo file as the phone's camera.
+    # Needs the host kernel module v4l2loopback and ffmpeg.
+    #
+    # Full workflow:
+    #   1. ./phone.sh camera selfie.jpg      (terminal 1 — runs ffmpeg, keep open)
+    #   2. ./setup-camera.sh patch phone1    (terminal 2 — edits compose + restart hint)
+    #   3. docker compose up -d --force-recreate phone1
+    #   4. ./phone.sh cam-grant phone1 firefox
     exec ./setup-camera.sh "$@"
     ;;
 

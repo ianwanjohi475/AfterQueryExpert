@@ -45,6 +45,9 @@ services:
     mem_limit: 4g
     volumes:
       - phone2-data:/data
+    # Virtual camera: uncomment after running ./phone.sh camera <video.mp4>
+    # devices:
+    #   - "/dev/video10:/dev/video10"
     ports:
       - "5565:5555"
     command:
@@ -62,6 +65,9 @@ services:
     mem_limit: 4g
     volumes:
       - phone3-data:/data
+    # Virtual camera: uncomment after running ./phone.sh camera <video.mp4>
+    # devices:
+    #   - "/dev/video10:/dev/video10"
     ports:
       - "5575:5555"
     command:
