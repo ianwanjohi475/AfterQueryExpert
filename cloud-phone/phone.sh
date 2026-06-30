@@ -194,18 +194,17 @@ case "$cmd" in
     build_overrides() {
       local rp="$1"      # the resetprop command string (e.g. "resetprop" or "magisk resetprop")
       local partitions="system vendor product odm system_ext"
-      # field -> value
-      local fields="brand=$brand manufacturer=$mfr model=$model device=$device name=$device"
-      for kv in $fields; do
-        local field="${kv%%=*}" value="${kv#*=}"
-        echo "$rp ro.product.$field $value"
-        for p in $partitions; do
-          echo "$rp ro.product.$p.$field $value"
-        done
+      # Quote values so multi-word ones (e.g. "Pixel 7") aren't split into
+      # separate resetprop arguments when the shell re-parses the line.
+      emit() { echo "$rp $1 \"$2\""; }
+      for fv in "brand=$brand" "manufacturer=$mfr" "model=$model" "device=$device" "name=$device"; do
+        local field="${fv%%=*}" value="${fv#*=}"
+        emit "ro.product.$field" "$value"
+        for p in $partitions; do emit "ro.product.$p.$field" "$value"; done
       done
-      echo "$rp ro.build.fingerprint $fp"
-      echo "$rp ro.serialno $serial"
-      echo "$rp ro.boot.serialno $serial"
+      emit "ro.build.fingerprint" "$fp"
+      emit "ro.serialno"          "$serial"
+      emit "ro.boot.serialno"     "$serial"
     }
 
     # 1) Runtime override -- effective immediately for getprop callers.
