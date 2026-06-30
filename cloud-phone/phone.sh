@@ -127,19 +127,41 @@ case "$cmd" in
     ;;
 
   fingerprint)
-    # Randomise device identity (anti-detect basics). Needs a Magisk-enabled
-    # image (e.g. fahaddz/redroid:13) because it uses `resetprop`. Props reset
-    # on reboot, so re-run this after each ./phone.sh up.
+    # Randomise device identity. Uses Magisk resetprop via `docker exec` (real
+    # root inside the container -- bypasses Magisk's su policy which usually
+    # denies the adb shell user). Installs a Magisk module so the identity
+    # persists across container restarts. Needs a Magisk-enabled image
+    # (e.g. fahaddz/redroid:13). On a base redroid image (no Magisk) this
+    # fails with a clear instruction to switch images.
     need_adb
     [[ $# -ge 1 ]] || die "Usage: ./phone.sh fingerprint <phone> [show]"
     target="$(connect "$1")"
     if [[ "${2:-}" == "show" ]]; then
-      adb -s "$target" shell getprop ro.product.model
       adb -s "$target" shell getprop ro.product.brand
+      adb -s "$target" shell getprop ro.product.manufacturer
+      adb -s "$target" shell getprop ro.product.model
+      adb -s "$target" shell getprop ro.product.device
+      adb -s "$target" shell getprop ro.serialno
       adb -s "$target" shell getprop ro.build.fingerprint
       adb -s "$target" shell settings get secure android_id
       exit 0
     fi
+
+    CID="$(docker inspect -f '{{.Id}}' "$1" 2>/dev/null || true)"
+    [[ -n "$CID" ]] || die "Container $1 is not running. Run ./phone.sh up first."
+    dex() { docker exec "$CID" sh -c "$1"; }
+
+    # Locate resetprop the same way fix-arm-crash.sh does.
+    RP="$(dex 'for p in /sbin/resetprop /system/bin/resetprop /debug_ramdisk/.magisk/busybox/resetprop /data/adb/magisk/resetprop $(magisk --path 2>/dev/null)/.magisk/busybox/resetprop; do [ -x "$p" ] && { echo "$p"; break; }; done' 2>/dev/null | tr -d '\r' | head -n1)"
+    if [[ -z "$RP" ]] && dex 'command -v magisk >/dev/null 2>&1'; then RP='magisk resetprop'; fi
+    if [[ -z "$RP" ]]; then
+      red "No Magisk / resetprop in this image. ro.* props can't be overridden."
+      red "Switch to a Magisk-enabled image:"
+      red "    sed -i 's|^REDROID_IMAGE=.*|REDROID_IMAGE=fahaddz/redroid:13|' .env"
+      red "    docker pull fahaddz/redroid:13 && ./phone.sh wipe && ./phone.sh up"
+      exit 1
+    fi
+
     # A few real device profiles: brand|manufacturer|model|device|fingerprint
     PROFILES=(
       "samsung|samsung|SM-G991B|o1s|samsung/o1sxxx/o1s:13/TP1A.220624.014/G991BXXU5DWA1:user/release-keys"
@@ -150,18 +172,48 @@ case "$cmd" in
     IFS='|' read -r brand mfr model device fp <<< "${PROFILES[$RANDOM % ${#PROFILES[@]}]}"
     serial="$(tr -dc 'A-Z0-9' </dev/urandom | head -c 12 || true)"
     aid="$(tr -dc 'a-f0-9' </dev/urandom | head -c 16 || true)"
-    echo "Applying identity to $1: $brand $model"
-    adb -s "$target" shell "su -c '
-      resetprop ro.product.brand $brand;
-      resetprop ro.product.manufacturer $mfr;
-      resetprop ro.product.model $model;
-      resetprop ro.product.device $device;
-      resetprop ro.product.name $device;
-      resetprop ro.build.fingerprint $fp;
-      resetprop ro.serialno $serial' " \
-      || die "resetprop failed. This needs a Magisk image (set REDROID_IMAGE=fahaddz/redroid:13 in .env)."
+
+    echo "Applying identity to $1: $brand $model  (serial $serial)"
+
+    # 1) Runtime override -- effective immediately for getprop callers.
+    RP_CMDS="$RP ro.product.brand $brand
+$RP ro.product.manufacturer $mfr
+$RP ro.product.model $model
+$RP ro.product.device $device
+$RP ro.product.name $device
+$RP ro.build.fingerprint $fp
+$RP ro.serialno $serial"
+    dex "$RP_CMDS" >/dev/null 2>&1 || die "resetprop failed at runtime."
+
+    # 2) Magisk module so the identity is re-applied on every container start.
+    MOD='/data/adb/modules/device-fingerprint'
+    dex "mkdir -p $MOD && \
+      printf 'id=device-fingerprint\nname=Device fingerprint\nversion=1.0\nversionCode=1\nauthor=cloud-phone\ndescription=Pinned device identity ($brand $model).\n' > $MOD/module.prop && \
+      { echo '#!/system/bin/sh'; \
+        echo 'resetprop ro.product.brand $brand'; \
+        echo 'resetprop ro.product.manufacturer $mfr'; \
+        echo 'resetprop ro.product.model $model'; \
+        echo 'resetprop ro.product.device $device'; \
+        echo 'resetprop ro.product.name $device'; \
+        echo 'resetprop ro.build.fingerprint $fp'; \
+        echo 'resetprop ro.serialno $serial'; \
+      } > $MOD/post-fs-data.sh && chmod 755 $MOD/post-fs-data.sh && touch $MOD/update" \
+      >/dev/null 2>&1 || true
+
+    # 3) android_id doesn't need root and isn't a ro.* prop, so just write it.
     adb -s "$target" shell settings put secure android_id "$aid" || true
-    green "Identity randomised. Verify with: ./phone.sh fingerprint $1 show"
+
+    # 4) Restart zygote so framework-level callers (Play Store, attestation,
+    #    most apps) see the new ABIs/identity without a full container restart.
+    echo "Restarting Android framework so apps re-read the identity..."
+    dex 'stop; start' >/dev/null 2>&1 || true
+    for i in $(seq 1 30); do
+      sleep 2
+      [[ "$(dex 'getprop sys.boot_completed' 2>/dev/null | tr -d '\r')" == "1" ]] && break
+    done
+
+    green "Identity applied + persisted via Magisk module."
+    green "Verify with: ./phone.sh fingerprint $1 show"
     ;;
 
   gps)
