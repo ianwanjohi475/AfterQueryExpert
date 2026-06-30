@@ -137,13 +137,22 @@ case "$cmd" in
     [[ $# -ge 1 ]] || die "Usage: ./phone.sh fingerprint <phone> [show]"
     target="$(connect "$1")"
     if [[ "${2:-}" == "show" ]]; then
-      adb -s "$target" shell getprop ro.product.brand
-      adb -s "$target" shell getprop ro.product.manufacturer
-      adb -s "$target" shell getprop ro.product.model
-      adb -s "$target" shell getprop ro.product.device
-      adb -s "$target" shell getprop ro.serialno
-      adb -s "$target" shell getprop ro.build.fingerprint
-      adb -s "$target" shell settings get secure android_id
+      # Reconnect once up front so the adb daemon doesn't drop us mid-stream.
+      adb connect "$target" >/dev/null 2>&1 || true
+      # Batch all props in a single shell to keep one adb session.
+      adb -s "$target" shell '
+        for k in \
+          ro.product.brand ro.product.manufacturer ro.product.model ro.product.device ro.product.name \
+          ro.product.system.brand ro.product.system.manufacturer ro.product.system.model ro.product.system.device ro.product.system.name \
+          ro.product.vendor.brand ro.product.vendor.manufacturer ro.product.vendor.model ro.product.vendor.device ro.product.vendor.name \
+          ro.product.product.brand ro.product.product.manufacturer ro.product.product.model ro.product.product.device ro.product.product.name \
+          ro.product.odm.brand ro.product.odm.manufacturer ro.product.odm.model ro.product.odm.device ro.product.odm.name \
+          ro.product.system_ext.brand ro.product.system_ext.manufacturer ro.product.system_ext.model ro.product.system_ext.device ro.product.system_ext.name \
+          ro.serialno ro.boot.serialno ro.build.fingerprint; do
+          v=$(getprop "$k")
+          [ -n "$v" ] && printf "%-45s %s\n" "$k" "$v"
+        done
+        printf "%-45s %s\n" "android_id" "$(settings get secure android_id)"'
       exit 0
     fi
 
@@ -175,29 +184,47 @@ case "$cmd" in
 
     echo "Applying identity to $1: $brand $model  (serial $serial)"
 
+    # Build the full list of property overrides. Android 10+ stores each of
+    # brand/manufacturer/model/device/name under five "partition" variants
+    # (system, vendor, product, odm, system_ext) plus the legacy flat key.
+    # The flat key (ro.product.model etc.) is *derived* at boot from one of
+    # the partition variants based on ro.product.property_source_order, so
+    # overriding only the flat key leaves the real value visible to anything
+    # that reads the partition variant directly. Override all of them.
+    build_overrides() {
+      local rp="$1"      # the resetprop command string (e.g. "resetprop" or "magisk resetprop")
+      local partitions="system vendor product odm system_ext"
+      # field -> value
+      local fields="brand=$brand manufacturer=$mfr model=$model device=$device name=$device"
+      for kv in $fields; do
+        local field="${kv%%=*}" value="${kv#*=}"
+        echo "$rp ro.product.$field $value"
+        for p in $partitions; do
+          echo "$rp ro.product.$p.$field $value"
+        done
+      done
+      echo "$rp ro.build.fingerprint $fp"
+      echo "$rp ro.serialno $serial"
+      echo "$rp ro.boot.serialno $serial"
+    }
+
     # 1) Runtime override -- effective immediately for getprop callers.
-    RP_CMDS="$RP ro.product.brand $brand
-$RP ro.product.manufacturer $mfr
-$RP ro.product.model $model
-$RP ro.product.device $device
-$RP ro.product.name $device
-$RP ro.build.fingerprint $fp
-$RP ro.serialno $serial"
+    RP_CMDS="$(build_overrides "$RP")"
     dex "$RP_CMDS" >/dev/null 2>&1 || die "resetprop failed at runtime."
 
     # 2) Magisk module so the identity is re-applied on every container start.
+    #    The post-fs-data.sh uses the plain "resetprop" name -- by the time it
+    #    runs Magisk has it on PATH.
     MOD='/data/adb/modules/device-fingerprint'
+    POST_FS_BODY="$(printf '#!/system/bin/sh\n%s\n' "$(build_overrides resetprop)")"
+    # base64 the body so we don't fight with shell quoting inside docker exec.
+    POST_FS_B64="$(printf '%s' "$POST_FS_BODY" | base64 -w0)"
+    MODULE_PROP="$(printf 'id=device-fingerprint\nname=Device fingerprint\nversion=1.0\nversionCode=1\nauthor=cloud-phone\ndescription=Pinned device identity (%s %s).\n' "$brand" "$model")"
+    MODULE_PROP_B64="$(printf '%s' "$MODULE_PROP" | base64 -w0)"
     dex "mkdir -p $MOD && \
-      printf 'id=device-fingerprint\nname=Device fingerprint\nversion=1.0\nversionCode=1\nauthor=cloud-phone\ndescription=Pinned device identity ($brand $model).\n' > $MOD/module.prop && \
-      { echo '#!/system/bin/sh'; \
-        echo 'resetprop ro.product.brand $brand'; \
-        echo 'resetprop ro.product.manufacturer $mfr'; \
-        echo 'resetprop ro.product.model $model'; \
-        echo 'resetprop ro.product.device $device'; \
-        echo 'resetprop ro.product.name $device'; \
-        echo 'resetprop ro.build.fingerprint $fp'; \
-        echo 'resetprop ro.serialno $serial'; \
-      } > $MOD/post-fs-data.sh && chmod 755 $MOD/post-fs-data.sh && touch $MOD/update" \
+      echo '$MODULE_PROP_B64' | base64 -d > $MOD/module.prop && \
+      echo '$POST_FS_B64'    | base64 -d > $MOD/post-fs-data.sh && \
+      chmod 755 $MOD/post-fs-data.sh && touch $MOD/update" \
       >/dev/null 2>&1 || true
 
     # 3) android_id doesn't need root and isn't a ro.* prop, so just write it.
