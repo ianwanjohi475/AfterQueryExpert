@@ -11,6 +11,7 @@
 #   ./phone.sh app  <phone> <pkg>    launch an installed app by package name
 #   ./phone.sh proxy <phone> host:port | clear   set/clear an HTTP proxy
 #   ./phone.sh fingerprint <phone> [show]        randomise device identity (anti-detect)
+#   ./phone.sh location <phone> off | on | show  toggle all location providers
 #   ./phone.sh gps  <phone> <pkg> <lat> <lng>    authorise a fake-GPS app
 #   ./phone.sh camera <video.mp4>                feed a video as a virtual camera
 #   ./phone.sh fix-ndk <phone>       fix ARM64 app crash (SIGILL/NDK translation)
@@ -240,6 +241,34 @@ case "$cmd" in
 
     green "Identity applied + persisted via Magisk module."
     green "Verify with: ./phone.sh fingerprint $1 show"
+    ;;
+
+  location)
+    # Turn every Android location provider off (or back on). With location off
+    # apps fall back to IP-based geolocation -- which, behind ./proxy-full-on.sh,
+    # resolves to the SOCKS5 exit IP. So "off + proxy" == apps see the proxy's
+    # location, not your real GPS.
+    need_adb
+    [[ $# -ge 2 ]] || die "Usage: ./phone.sh location <phone> off | on | show"
+    target="$(connect "$1")"
+    case "$2" in
+      off)
+        adb -s "$target" shell cmd location set-location-enabled false
+        # Also clear the legacy providers list for older callers.
+        adb -s "$target" shell settings put secure location_providers_allowed " " >/dev/null 2>&1 || true
+        green "Location OFF on $1. Apps now have no GPS/network/fused location."
+        green "With ./proxy-full-on.sh active, apps fall back to the proxy's IP location."
+        ;;
+      on)
+        adb -s "$target" shell cmd location set-location-enabled true
+        green "Location ON on $1."
+        ;;
+      show)
+        echo -n "location_mode: ";  adb -s "$target" shell settings get secure location_mode
+        echo -n "enabled:       ";  adb -s "$target" shell cmd location is-location-enabled
+        ;;
+      *) die "Usage: ./phone.sh location <phone> off | on | show" ;;
+    esac
     ;;
 
   gps)
