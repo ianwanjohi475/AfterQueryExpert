@@ -11,6 +11,8 @@
 #   ./setup-camera.sh patch [phone1|all]       uncomment docker-compose devices +
 #                                               restart phone(s) (run once after
 #                                               starting the feed above)
+#   ./setup-camera.sh unpatch [phone1|all]     undo patch (if /dev/video10 missing)
+#   ./setup-camera.sh doctor [phone2]          check every layer, show what's broken
 #   ./setup-camera.sh stop                     stop the feed and unload the module
 #
 # Full walkthrough:
@@ -36,6 +38,66 @@ if [[ "${1:-}" == "stop" ]]; then
   pkill -f "ffmpeg.*$DEV" 2>/dev/null || true
   sudo modprobe -r v4l2loopback 2>/dev/null || true
   green "Virtual camera stopped."
+  exit 0
+fi
+
+# ---------- doctor -------------------------------------------------------------
+# Checks every layer of the camera chain and says exactly which one is broken.
+#   ./setup-camera.sh doctor [phone2]
+if [[ "${1:-}" == "doctor" ]]; then
+  declare -A PORTS=( [phone1]=5555 [phone2]=5565 [phone3]=5575 )
+  PHONE="${2:-phone1}"
+  [[ -n "${PORTS[$PHONE]:-}" ]] || { red "Unknown phone '$PHONE'."; exit 1; }
+  ok()   { green "  [OK]  $1"; }
+  bad()  { red   "  [!!]  $1"; }
+  echo "=== Camera doctor for $PHONE ==="
+
+  echo
+  echo "Layer 1 — host kernel module"
+  if lsmod 2>/dev/null | grep -q v4l2loopback; then
+    ok "v4l2loopback is loaded"
+  else
+    bad "v4l2loopback NOT loaded. Fix: sudo modprobe v4l2loopback video_nr=10 exclusive_caps=1 card_label=CloudPhoneCam"
+  fi
+  if [[ -e "$DEV" ]]; then ok "$DEV exists on host"; else bad "$DEV missing (module not loaded)"; fi
+
+  echo
+  echo "Layer 2 — ffmpeg feed"
+  if pgrep -f "ffmpeg.*$DEV" >/dev/null 2>&1; then
+    ok "ffmpeg is feeding $DEV"
+  else
+    bad "No ffmpeg feeding $DEV. Fix: ./phone.sh camera <video.mp4>  (keep it running)"
+  fi
+
+  echo
+  echo "Layer 3 — device inside the container"
+  CID="$(docker inspect -f '{{.Id}}' "$PHONE" 2>/dev/null || true)"
+  if [[ -z "$CID" ]]; then
+    bad "$PHONE container not running."
+  elif docker exec "$CID" sh -c "[ -e $DEV ]" 2>/dev/null; then
+    ok "$DEV is visible INSIDE $PHONE"
+  else
+    bad "$DEV NOT inside $PHONE. Fix: ./setup-camera.sh patch $PHONE && docker compose up -d --force-recreate $PHONE"
+  fi
+
+  echo
+  echo "Layer 4 — Android sees a camera"
+  DEVADB="localhost:${PORTS[$PHONE]}"
+  adb connect "$DEVADB" >/dev/null 2>&1 || true
+  CAMS="$(adb -s "$DEVADB" shell cmd media.camera get-number-of-cameras 2>/dev/null | tr -d '\r' || true)"
+  if [[ -z "$CAMS" || "$CAMS" == "0" ]]; then
+    CAMS="$(adb -s "$DEVADB" shell dumpsys media.camera 2>/dev/null | grep -c 'Camera [0-9]' || true)"
+  fi
+  if [[ -n "$CAMS" && "$CAMS" != "0" ]]; then
+    ok "Android reports $CAMS camera(s)"
+  else
+    bad "Android reports ZERO cameras."
+    yellow "      The stock redroid image has no v4l2 camera HAL, so passing"
+    yellow "      /dev/video10 alone does NOT create an Android camera. This is"
+    yellow "      the layer that blocks browser getUserMedia. See notes below."
+  fi
+  echo
+  echo "=== End of report ==="
   exit 0
 fi
 
