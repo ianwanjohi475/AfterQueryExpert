@@ -86,8 +86,8 @@ cd WSL2-Linux-Kernel
 cp Microsoft/config-wsl .config
 ```
 
-Now turn on the Android features. Run this block exactly — it appends the needed
-options:
+Now turn on the Android features **and** the virtual camera support. Run this
+block exactly — it appends the needed options:
 ```bash
 cat >> .config <<'EOF'
 CONFIG_DMABUF_HEAPS=y
@@ -98,7 +98,26 @@ CONFIG_ANDROID=y
 CONFIG_ANDROID_BINDER_IPC=y
 CONFIG_ANDROID_BINDERFS=y
 CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder"
+# Virtual camera support (needed for ./phone.sh camera <video>)
+CONFIG_MEDIA_SUPPORT=y
+CONFIG_VIDEO_DEV=y
+CONFIG_MEDIA_CAMERA_SUPPORT=y
+CONFIG_VIDEO_V4L2=y
+CONFIG_V4L2_MEM2MEM_DEV=y
+CONFIG_MEDIA_USB_SUPPORT=y
 EOF
+```
+
+After the kernel is built and booted (Parts 3–4), install the v4l2loopback module:
+```bash
+# Run this AFTER you've rebooted into the new kernel (Part 4 done)
+sudo apt-get install -y linux-headers-$(uname -r) v4l2loopback-dkms 2>/dev/null || true
+# If that fails (headers mismatch on WSL2 custom kernel), build manually:
+cd ~/WSL2-Linux-Kernel
+sudo make modules_install
+sudo mkdir -p /lib/modules/$(uname -r)
+sudo ln -sf ~/WSL2-Linux-Kernel /lib/modules/$(uname -r)/build
+sudo apt-get install -y v4l2loopback-dkms
 ```
 
 Build it (this is the slow part — 20–60 min depending on your PC):

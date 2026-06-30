@@ -112,12 +112,64 @@ PYEOF
   exit 0
 fi
 
+# ---------- unpatch ------------------------------------------------------------
+# Re-comments the devices block so phones can start without /dev/video10.
+# Run this if v4l2loopback can't load and phone2/phone3 won't start.
+if [[ "${1:-}" == "unpatch" ]]; then
+  target="${2:-all}"
+
+  if [[ "$target" == "all" ]]; then
+    sed -i -e 's/^    devices:$/    # devices:/' \
+           -e 's/^      - "\/dev\/video10:\/dev\/video10"$/    #   - "\/dev\/video10:\/dev\/video10"/' \
+           docker-compose.yml 2>/dev/null || \
+    sed -i '' \
+        -e 's/^    devices:$/    # devices:/' \
+        -e 's/^      - "\/dev\/video10:\/dev\/video10"$/    #   - "\/dev\/video10:\/dev\/video10"/' \
+        docker-compose.yml
+    green "Camera devices re-commented in docker-compose.yml (all phones)."
+  else
+    python3 - "$target" <<'PYEOF'
+import sys, re
+
+phone = sys.argv[1]
+path  = "docker-compose.yml"
+with open(path) as f:
+    lines = f.readlines()
+
+in_block = False
+out = []
+for line in lines:
+    if re.match(rf"^  {re.escape(phone)}:\s*$", line):
+        in_block = True
+    elif in_block and re.match(r"^  \w", line) and not line.startswith(f"  {phone}"):
+        in_block = False
+
+    if in_block and line.rstrip() == "    devices:":
+        line = "    # devices:\n"
+    elif in_block and line.rstrip() == '      - "/dev/video10:/dev/video10"':
+        line = '    #   - "/dev/video10:/dev/video10"\n'
+
+    out.append(line)
+
+with open(path, "w") as f:
+    f.writelines(out)
+print(f"Reverted camera patch for {phone}.")
+PYEOF
+    green "Camera device re-commented for $target — phone can now start without /dev/video10."
+  fi
+  echo
+  yellow "Now start the phone normally:"
+  yellow "  docker compose up -d ${2:-phone1 phone2 phone3}"
+  exit 0
+fi
+
 # ---------- feed a video / photo -----------------------------------------------
 input="${1:-}"
 [[ -n "$input" && -f "$input" ]] || {
   red "Usage:"
   red "  ./setup-camera.sh <video.mp4|photo.jpg>   start virtual camera"
   red "  ./setup-camera.sh patch [phone1|all]       wire phone(s) after camera started"
+  red "  ./setup-camera.sh unpatch [phone1|all]     re-comment (undo patch) if /dev/video10 missing"
   red "  ./setup-camera.sh stop                     stop"
   exit 1
 }
