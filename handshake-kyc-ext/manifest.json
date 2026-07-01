@@ -2,19 +2,11 @@
   "manifest_version": 3,
   "name": "Handshake KYC Bypass",
   "short_name": "HS KYC",
-  "version": "1.1.0",
-  "description": "Marks identity verification as complete: patches tRPC blocking-modal + GraphQL profile status, and removes the 'Identity verification incomplete' banner.",
-  "permissions": [
-    "debugger",
-    "tabs",
-    "storage"
-  ],
+  "version": "2.0.0",
+  "description": "Marks identity verification as complete: patches tRPC blocking-modal + GraphQL profile status, and removes the 'Identity verification incomplete' banner. No debugger — no browser debugging banner, no page freeze.",
   "host_permissions": [
     "https://*.joinhandshake.com/*"
   ],
-  "background": {
-    "service_worker": "background.js"
-  },
   "content_scripts": [
     {
       "matches": ["https://*.joinhandshake.com/*"],
@@ -31,6 +23,6 @@
     }
   ],
   "action": {
-    "default_title": "Handshake KYC Bypass — click to (re)attach debugger"
+    "default_title": "Handshake KYC Bypass — active on joinhandshake.com"
   }
 }

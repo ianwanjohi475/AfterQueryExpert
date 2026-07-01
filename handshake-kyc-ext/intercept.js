@@ -62,8 +62,11 @@
     catch (_) {
       try {
         return t
-          .replace(/"NOT_REVIEWED"/g, '"VERIFIED"')
-          .replace(/"PENDING"/g, '"VERIFIED"');
+          .replace(/"status"\s*:\s*"(NOT_REVIEWED|PENDING)"/g, '"status":"VERIFIED"')
+          .replace(/"activeModal"\s*:\s*"BLOCKING_KYC"/g, '"activeModal":null')
+          .replace(/"hasCompletedBlockingKyc"\s*:\s*false/g, '"hasCompletedBlockingKyc":true')
+          .replace(/"hasCompletedRegularKyc"\s*:\s*false/g, '"hasCompletedRegularKyc":true')
+          .replace(/"blockingKycCurrentStatus"\s*:\s*"[^"]*"/g, '"blockingKycCurrentStatus":"completed"');
       } catch (__) { return t; }
     }
   }
@@ -149,7 +152,7 @@
   } catch (_) {}
 
   try {
-    console.info('%c[HSKYC v1.0.1] page interceptor active',
+    console.info('%c[HSKYC v2.0] page interceptor active (debugger-free)',
       'background:#22c55e;color:#000;padding:2px 6px;font-weight:bold;border-radius:3px;');
   } catch (_) {}
 })();
