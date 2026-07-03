@@ -25,7 +25,7 @@ cd "$(dirname "$0")"
 
 # Map service name -> host adb port. Mirror docker-compose.yml. Add lines here
 # when you add more phones.
-declare -A PORTS=( [phone1]=5555 [phone2]=5565 [phone3]=5575 )
+declare -A PORTS=( [phone1]=5585 [phone2]=5565 [phone3]=5575 )
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }

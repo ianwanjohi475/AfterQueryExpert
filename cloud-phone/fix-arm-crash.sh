@@ -33,7 +33,7 @@ red()    { printf '\033[31m%s\033[0m\n' "$*"; }
 green()  { printf '\033[32m%s\033[0m\n' "$*"; }
 yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
 
-declare -A PORTS=( [phone1]=5555 [phone2]=5565 [phone3]=5575 )
+declare -A PORTS=( [phone1]=5585 [phone2]=5565 [phone3]=5575 )
 
 PHONE="${1:-}"
 ACTION="${2:-apply}"

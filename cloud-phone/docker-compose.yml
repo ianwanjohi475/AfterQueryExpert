@@ -29,7 +29,7 @@ services:
     # devices:
     #   - "/dev/video10:/dev/video10"
     ports:
-      - "5555:5555"          # adb: connect with `adb connect localhost:5555`
+      - "5585:5555"          # adb: connect with `adb connect localhost:5585`
     command:
       - androidboot.redroid_width=${WIDTH:-720}
       - androidboot.redroid_height=${HEIGHT:-1280}
